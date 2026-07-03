@@ -1,4 +1,4 @@
-package com.learning.backend;
+package com.deutschlingodeck;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

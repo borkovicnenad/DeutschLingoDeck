@@ -1,4 +1,4 @@
-package com.learning.backend;
+package com.deutschlingodeck;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

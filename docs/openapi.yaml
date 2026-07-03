@@ -1,0 +1,1148 @@
+openapi: 3.0.3
+
+info:
+  title: DeutschLingoDeck Backend API
+  version: 1.0.0
+  description: REST API for DeutschLingoDeck, a German vocabulary learning platform.
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+  - name: Profile
+  - name: Dictionaries
+  - name: Games
+  - name: Statistics
+
+paths:
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Authenticate user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout user and invalidate refresh token
+      responses:
+        "204":
+          description: Logout successful
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Retrieve current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+
+  /profile:
+    get:
+      tags: [Profile]
+      summary: Retrieve user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+
+    put:
+      tags: [Profile]
+      summary: Update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /profile/password:
+    put:
+      tags: [Profile]
+      summary: Change user password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Password changed successfully
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /dictionaries:
+    get:
+      tags: [Dictionaries]
+      summary: List dictionaries owned by the current user
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: User dictionaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedDictionarySummaryResponse"
+
+  /dictionaries/import:
+    post:
+      tags: [Dictionaries]
+      summary: Import dictionary from Excel file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DictionaryImportRequest"
+      responses:
+        "201":
+          description: Dictionary imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DictionaryImportResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityError"
+
+  /dictionaries/{dictionaryId}:
+    get:
+      tags: [Dictionaries]
+      summary: Retrieve dictionary details
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+      responses:
+        "200":
+          description: Dictionary details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DictionaryDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    put:
+      tags: [Dictionaries]
+      summary: Update dictionary metadata
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDictionaryRequest"
+      responses:
+        "200":
+          description: Dictionary updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DictionaryDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+    delete:
+      tags: [Dictionaries]
+      summary: Soft delete dictionary
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+      responses:
+        "204":
+          description: Dictionary deleted
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /dictionaries/{dictionaryId}/cards:
+    get:
+      tags: [Dictionaries]
+      summary: List cards inside a dictionary
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Dictionary cards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedCardResponse"
+
+  /dictionaries/{dictionaryId}/cards/{cardId}:
+    get:
+      tags: [Dictionaries]
+      summary: Retrieve card details
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+        - $ref: "#/components/parameters/CardId"
+      responses:
+        "200":
+          description: Card details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /games:
+    post:
+      tags: [Games]
+      summary: Start a new game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGameRequest"
+      responses:
+        "201":
+          description: Game started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+    get:
+      tags: [Games]
+      summary: List user games
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/GameStatus"
+        - name: dictionaryId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: User games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedGameSummaryResponse"
+
+  /games/{gameId}:
+    get:
+      tags: [Games]
+      summary: Retrieve game state
+      parameters:
+        - $ref: "#/components/parameters/GameId"
+      responses:
+        "200":
+          description: Game state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /games/{gameId}/answers:
+    post:
+      tags: [Games]
+      summary: Submit answer for active game card
+      parameters:
+        - $ref: "#/components/parameters/GameId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitAnswerRequest"
+      responses:
+        "201":
+          description: Answer submitted and validated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnswerValidationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /games/{gameId}/finish:
+    post:
+      tags: [Games]
+      summary: Finish active game
+      parameters:
+        - $ref: "#/components/parameters/GameId"
+      responses:
+        "200":
+          description: Game finished
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameSummaryResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /games/{gameId}/abandon:
+    post:
+      tags: [Games]
+      summary: Abandon active game
+      parameters:
+        - $ref: "#/components/parameters/GameId"
+      responses:
+        "200":
+          description: Game abandoned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameSummaryResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /games/{gameId}/summary:
+    get:
+      tags: [Games]
+      summary: Retrieve game summary
+      parameters:
+        - $ref: "#/components/parameters/GameId"
+      responses:
+        "200":
+          description: Game summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameSummaryResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /statistics:
+    get:
+      tags: [Statistics]
+      summary: Retrieve user dashboard statistics
+      parameters:
+        - $ref: "#/components/parameters/FromDate"
+        - $ref: "#/components/parameters/ToDate"
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStatisticsResponse"
+
+  /statistics/cards:
+    get:
+      tags: [Statistics]
+      summary: Retrieve card statistics
+      parameters:
+        - name: dictionaryId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Card statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedCardStatisticsResponse"
+
+  /statistics/dictionaries:
+    get:
+      tags: [Statistics]
+      summary: Retrieve dictionary statistics
+      responses:
+        "200":
+          description: Dictionary statistics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DictionaryStatisticsResponse"
+
+  /statistics/history:
+    get:
+      tags: [Statistics]
+      summary: Retrieve learning history
+      parameters:
+        - $ref: "#/components/parameters/FromDate"
+        - $ref: "#/components/parameters/ToDate"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Learning history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedLearningHistoryResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    DictionaryId:
+      name: dictionaryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+    CardId:
+      name: cardId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+    GameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+    Size:
+      name: size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    FromDate:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+
+    ToDate:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    ForbiddenError:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    ConflictError:
+      description: Business conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    UnprocessableEntityError:
+      description: Unprocessable uploaded data
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+          example: nenad@example.com
+        password:
+          type: string
+          minLength: 12
+          example: VeryStrongPassword123!
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Nenad
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [accessToken, refreshToken, tokenType, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        user:
+          $ref: "#/components/schemas/UserResponse"
+
+    UserResponse:
+      type: object
+      required: [id, email, displayName]
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+
+    ProfileResponse:
+      type: object
+      required: [id, email, displayName, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    UpdateProfileRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 100
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 12
+
+    DictionaryImportRequest:
+      type: object
+      required: [file, name, sourceLanguage, targetLanguage]
+      properties:
+        file:
+          type: string
+          format: binary
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        description:
+          type: string
+          maxLength: 1000
+        sourceLanguage:
+          type: string
+          example: hr
+        targetLanguage:
+          type: string
+          example: de
+
+    DictionaryImportResponse:
+      type: object
+      required: [dictionaryId, name, importedCards, status]
+      properties:
+        dictionaryId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        importedCards:
+          type: integer
+        status:
+          type: string
+          example: IMPORTED
+        warnings:
+          type: array
+          items:
+            type: string
+
+    UpdateDictionaryRequest:
+      type: object
+      required: [name, sourceLanguage, targetLanguage]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+        description:
+          type: string
+          maxLength: 1000
+        sourceLanguage:
+          type: string
+        targetLanguage:
+          type: string
+
+    DictionarySummaryResponse:
+      type: object
+      required: [id, name, sourceLanguage, targetLanguage, cardCount, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+        sourceLanguage:
+          type: string
+        targetLanguage:
+          type: string
+        cardCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    DictionaryDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/DictionarySummaryResponse"
+        - type: object
+          properties:
+            updatedAt:
+              type: string
+              format: date-time
+
+    CardSummaryResponse:
+      type: object
+      required: [id, cardType, sourceText, position]
+      properties:
+        id:
+          type: integer
+          format: int64
+        cardType:
+          $ref: "#/components/schemas/CardType"
+        article:
+          type: string
+          nullable: true
+        sourceText:
+          type: string
+        primaryTranslation:
+          type: string
+        position:
+          type: integer
+
+    CardDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/CardSummaryResponse"
+        - type: object
+          properties:
+            acceptedAnswers:
+              type: array
+              items:
+                type: string
+            example:
+              type: string
+              nullable: true
+            notes:
+              type: string
+              nullable: true
+            difficultyLevel:
+              type: integer
+              nullable: true
+
+    CreateGameRequest:
+      type: object
+      required: [dictionaryId]
+      properties:
+        dictionaryId:
+          type: integer
+          format: int64
+        gameMode:
+          type: string
+          default: STANDARD
+          example: STANDARD
+
+    GameResponse:
+      type: object
+      required: [id, dictionaryId, status, totalCards, answeredCards]
+      properties:
+        id:
+          type: integer
+          format: int64
+        dictionaryId:
+          type: integer
+          format: int64
+        status:
+          $ref: "#/components/schemas/GameStatus"
+        totalCards:
+          type: integer
+        answeredCards:
+          type: integer
+        correctAnswers:
+          type: integer
+        incorrectAnswers:
+          type: integer
+        currentCard:
+          $ref: "#/components/schemas/CurrentCardResponse"
+
+    CurrentCardResponse:
+      type: object
+      required: [id, sourceText, cardType]
+      properties:
+        id:
+          type: integer
+          format: int64
+        sourceText:
+          type: string
+        cardType:
+          $ref: "#/components/schemas/CardType"
+        article:
+          type: string
+          nullable: true
+        example:
+          type: string
+          nullable: true
+
+    SubmitAnswerRequest:
+      type: object
+      required: [cardId, answer, responseTimeMs]
+      properties:
+        cardId:
+          type: integer
+          format: int64
+        answer:
+          type: string
+          minLength: 1
+          maxLength: 500
+        responseTimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+
+    AnswerValidationResponse:
+      type: object
+      required: [result, correct, givenAnswer, expectedAnswer]
+      properties:
+        result:
+          $ref: "#/components/schemas/ValidationResult"
+        correct:
+          type: boolean
+        givenAnswer:
+          type: string
+        expectedAnswer:
+          type: string
+        message:
+          type: string
+        nextCard:
+          $ref: "#/components/schemas/CurrentCardResponse"
+
+    GameSummaryResponse:
+      type: object
+      required: [gameId, status, totalCards, correctAnswers, incorrectAnswers, accuracy]
+      properties:
+        gameId:
+          type: integer
+          format: int64
+        status:
+          $ref: "#/components/schemas/GameStatus"
+        totalCards:
+          type: integer
+        answeredCards:
+          type: integer
+        correctAnswers:
+          type: integer
+        incorrectAnswers:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+        durationSeconds:
+          type: integer
+          format: int64
+        averageResponseTimeMs:
+          type: number
+          format: double
+
+    DashboardStatisticsResponse:
+      type: object
+      properties:
+        totalGames:
+          type: integer
+        totalAnswers:
+          type: integer
+        totalCorrectAnswers:
+          type: integer
+        totalIncorrectAnswers:
+          type: integer
+        overallAccuracy:
+          type: number
+          format: double
+        totalStudyTimeSeconds:
+          type: integer
+          format: int64
+        currentLearningStreak:
+          type: integer
+        longestLearningStreak:
+          type: integer
+
+    CardStatisticsResponse:
+      type: object
+      properties:
+        cardId:
+          type: integer
+          format: int64
+        dictionaryId:
+          type: integer
+          format: int64
+        sourceText:
+          type: string
+        timesShown:
+          type: integer
+        timesCorrect:
+          type: integer
+        timesIncorrect:
+          type: integer
+        successRate:
+          type: number
+          format: double
+        lastShownAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastCorrectAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    DictionaryStatisticsResponse:
+      type: object
+      properties:
+        dictionaryId:
+          type: integer
+          format: int64
+        dictionaryName:
+          type: string
+        completedGames:
+          type: integer
+        totalAnswers:
+          type: integer
+        averageAccuracy:
+          type: number
+          format: double
+        masteredCards:
+          type: integer
+        difficultCards:
+          type: integer
+
+    LearningHistoryResponse:
+      type: object
+      properties:
+        gameId:
+          type: integer
+          format: int64
+        dictionaryId:
+          type: integer
+          format: int64
+        dictionaryName:
+          type: string
+        status:
+          $ref: "#/components/schemas/GameStatus"
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        accuracy:
+          type: number
+          format: double
+
+    PagedDictionarySummaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/DictionarySummaryResponse"
+
+    PagedCardResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/CardSummaryResponse"
+
+    PagedGameSummaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/GameSummaryResponse"
+
+    PagedCardStatisticsResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/CardStatisticsResponse"
+
+    PagedLearningHistoryResponse:
+      allOf:
+        - $ref: "#/components/schemas/PageResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/LearningHistoryResponse"
+
+    PageResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required: [timestamp, status, code, message]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+        correlationId:
+          type: string
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldError"
+
+    FieldError:
+      type: object
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+
+    CardType:
+      type: string
+      enum:
+        - WORD
+        - NOUN
+        - VERB
+        - PHRASE
+        - SENTENCE
+
+    GameStatus:
+      type: string
+      enum:
+        - CREATED
+        - STARTED
+        - IN_PROGRESS
+        - FINISHED
+        - ABANDONED
+
+    ValidationResult:
+      type: string
+      enum:
+        - CORRECT
+        - WRONG_ARTICLE
+        - WRONG_TRANSLATION
+        - TYPO
+        - MISSING_WORD
+        - EXTRA_WORD
+        - PARTIALLY_CORRECT
+        - WRONG_SENTENCE

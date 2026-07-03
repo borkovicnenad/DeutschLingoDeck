@@ -8,4 +8,15 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
+      # TODO: switch to "validate" once Flyway migrations exist for the
+      # User/Dictionary/Card/Game/GameAnswer entities (STEP 12 of the
+      # backend skeleton explicitly defers Flyway migrations).
+      ddl-auto: none
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: alpha
+    tagsSorter: alpha
