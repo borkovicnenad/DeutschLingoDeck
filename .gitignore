@@ -1,0 +1,95 @@
+# ==========================
+# macOS
+# ==========================
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ==========================
+# IntelliJ IDEA
+# ==========================
+.idea/
+*.iml
+out/
+
+# ==========================
+# VS Code
+# ==========================
+.vscode/
+
+# ==========================
+# Logs
+# ==========================
+*.log
+logs/
+
+# ==========================
+# Environment
+# ==========================
+.env
+.env.*
+!.env.example
+
+# ==========================
+# Angular
+# ==========================
+frontend-app/node_modules/
+frontend-app/dist/
+frontend-app/.angular/
+frontend-app/coverage/
+frontend-app/.sass-cache/
+frontend-app/.cache/
+
+# Angular cache (ako ikad premjestiš aplikaciju)
+**/.angular/cache/
+
+# ==========================
+# Spring Boot / Maven
+# ==========================
+backend-app/target/
+backend-app/.mvn/wrapper/maven-wrapper.jar
+
+# Maven Wrapper (ostavi skripte!)
+!.mvn/
+!mvnw
+!mvnw.cmd
+
+# ==========================
+# Gradle (ako ga ikad koristiš)
+# ==========================
+.gradle/
+build/
+
+# ==========================
+# Temporary files
+# ==========================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ==========================
+# OS generated
+# ==========================
+Thumbs.db
+Desktop.ini
+
+# ==========================
+# Archives
+# ==========================
+*.zip
+*.tar
+*.gz
+*.rar
+
+# ==========================
+# Test reports
+# ==========================
+coverage/
+reports/
+
+# ==========================
+# Generated files
+# ==========================
+*.class
