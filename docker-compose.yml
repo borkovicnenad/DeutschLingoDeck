@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: deutschlingodeck-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-deutschlingodeck}
+      POSTGRES_USER: ${DB_USER:-deutschlingodeck}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-deutschlingodeck}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-deutschlingodeck} -d ${DB_NAME:-deutschlingodeck}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: deutschlingodeck-backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-deutschlingodeck}
+      DB_USER: ${DB_USER:-deutschlingodeck}
+      DB_PASSWORD: ${DB_PASSWORD:-deutschlingodeck}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      - gradle-cache:/root/.gradle
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: deutschlingodeck-frontend
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:
+  gradle-cache:
