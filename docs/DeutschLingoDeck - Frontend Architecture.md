@@ -10,17 +10,19 @@ This document defines the frontend architecture of the DeutschLingoDeck Angular 
 
 Its purpose is to provide a scalable, maintainable and modular architecture that separates responsibilities, encourages reusable components and aligns the frontend implementation with the backend OpenAPI specification.
 
-This document complements:
+This document complements the following project documentation:
 
 - OpenAPI Specification
 - Frontend Use Cases
 - Screen Specification
 
+The architecture defined here serves as the technical blueprint for the Angular application.
+
 ---
 
 # 2. Technology Stack
 
-The frontend is built using the following technologies:
+The frontend application is built using:
 
 - Angular 22
 - TypeScript
@@ -38,20 +40,20 @@ NgModules should not be introduced unless absolutely necessary.
 
 # 3. Architectural Principles
 
-The application follows these architectural principles:
+The frontend follows these principles:
 
 - Feature-based architecture
 - Standalone components
-- Lazy-loaded feature routes
+- Lazy-loaded routes
+- Separation of concerns
 - Thin pages
 - Reusable UI components
 - Business logic remains in backend services
-- API communication through dedicated services
-- Local state managed using Angular Signals
-- Asynchronous operations handled with RxJS
+- API communication through dedicated Angular services
 - Strong typing throughout the application
 - OpenAPI-first development
-- Separation of concerns
+- Signals for local state
+- RxJS for asynchronous workflows
 
 ---
 
@@ -78,11 +80,11 @@ Feature Services
 
 ↓
 
-HTTP Interceptor
+HTTP Interceptors
 
 ↓
 
-REST API (Spring Boot)
+Spring Boot REST API
 
 ↓
 
@@ -99,11 +101,11 @@ src/app
 ├── core
 │
 │   ├── auth
+│   ├── config
 │   ├── guards
 │   ├── interceptors
-│   ├── services
 │   ├── models
-│   └── config
+│   └── services
 │
 ├── layout
 │
@@ -138,17 +140,31 @@ src/app
 
 ---
 
-# 6. Core Layer
+# 6. Application Bootstrap
+
+When the application starts it should:
+
+1. Load application configuration.
+2. Restore authentication session if available.
+3. Load the currently authenticated user.
+4. Configure global application state.
+5. Redirect the user to the appropriate route.
+
+The bootstrap process should be transparent to the user.
+
+---
+
+# 7. Core Layer
 
 The Core layer contains singleton services and application-wide functionality.
 
-Responsibilities:
+Responsibilities include:
 
 - Authentication state
-- JWT handling
-- Current user
+- JWT management
+- Current user context
 - HTTP configuration
-- API base URL
+- API configuration
 - Route guards
 - HTTP interceptors
 - Global error handling
@@ -157,24 +173,24 @@ The Core layer must never depend on feature modules.
 
 ---
 
-# 7. Layout Layer
+# 8. Layout Layer
 
 The Layout layer defines the authenticated application shell.
 
-It is responsible for:
+Responsibilities:
 
 - Header
 - Sidebar
 - Main content area
 - Navigation
-- User information
+- Current user information
 - Logout action
 
-Public pages such as Login and Registration do not use the application shell.
+Public pages (Login and Registration) must not use the application shell.
 
 ---
 
-# 8. Shared Layer
+# 9. Shared Layer
 
 The Shared layer contains reusable UI building blocks.
 
@@ -182,21 +198,25 @@ Examples:
 
 - Loading Spinner
 - Confirmation Dialog
-- Empty State Component
-- Error Message Component
-- Page Header
+- Empty State
+- Error Message
 - Buttons
 - Cards
+- Page Header
 - Form Controls
 - Badges
 
-Shared components must never contain business logic.
+Shared components must:
+
+- be reusable
+- be presentation-focused
+- not contain business logic
 
 ---
 
-# 9. Feature Layer
+# 10. Feature Layer
 
-Each feature owns everything related to its business domain.
+Each feature owns all implementation details related to its business domain.
 
 Example:
 
@@ -216,11 +236,13 @@ state
 dictionaries.routes.ts
 ```
 
-Each feature should be independent from other features whenever possible.
+Each feature should be as independent as possible.
+
+Communication between features should occur only through shared services.
 
 ---
 
-# 10. Routing
+# 11. Routing
 
 The application uses lazy-loaded feature routes.
 
@@ -258,39 +280,45 @@ Main routes:
 /not-found
 ```
 
-Authenticated routes must be protected by an Auth Guard.
+Authenticated routes must be protected using AuthGuard.
 
-Authenticated users should never access Login or Registration pages.
+Authenticated users should automatically be redirected away from Login and Registration pages.
 
 ---
 
-# 11. State Management
+# 12. State Management
 
 Angular Signals are used for local application state.
 
-Examples:
+Each feature manages its own state.
 
-- Current User
-- Authentication Status
-- Selected Dictionary
-- Current Game
-- Current Card
-- Loading State
-- Error State
-- Dashboard Statistics
+Typical feature state includes:
 
-RxJS is used for:
+- loading
+- error
+- selected entity
+- current filters
+- current page
+- local UI state
 
-- HTTP requests
-- Async streams
-- Retry logic
-- Token refresh flow
+Global application state includes:
+
+- authenticated user
+- authentication status
+- application configuration
+
+RxJS is used only for:
+
+- HTTP communication
+- asynchronous streams
+- retry logic
+- refresh token flow
 
 NgRx should not be introduced in the MVP.
 
 ---
 
-# 12. API Communication
+# 13. API Communication
 
 All backend communication must go through dedicated Angular services.
 
@@ -302,20 +330,20 @@ Examples:
 - GameApiService
 - StatisticsApiService
 
-Components must never communicate with HttpClient directly.
+Components must never communicate directly with HttpClient.
 
 API models must match the backend OpenAPI specification.
 
 ---
 
-# 13. Authentication
+# 14. Authentication
 
-Authentication is based on:
+Authentication uses:
 
 - JWT Access Token
 - Refresh Token
 
-The frontend is responsible for:
+Frontend responsibilities:
 
 - Login
 - Registration
@@ -328,48 +356,58 @@ The HTTP interceptor automatically attaches the access token to every authentica
 
 ---
 
-# 14. Guards
+# 15. Route Guards
 
-The frontend should implement the following route guards:
+The frontend should implement the following guards.
 
-AuthGuard
+## AuthGuard
 
 Protects authenticated routes.
 
-GuestGuard
-
-Prevents authenticated users from accessing Login and Registration pages.
+Redirects unauthenticated users to Login.
 
 ---
 
-# 15. HTTP Interceptors
+## GuestGuard
 
-The application should contain at least the following interceptors.
+Protects public routes.
 
-Authentication Interceptor
+Redirects authenticated users to Dashboard.
+
+---
+
+# 16. HTTP Interceptors
+
+The application should contain the following interceptors.
+
+## Authentication Interceptor
 
 Automatically attaches JWT access tokens.
 
-Refresh Token Interceptor
+---
 
-Automatically refreshes expired access tokens.
+## Refresh Token Interceptor
 
-Error Interceptor
-
-Transforms backend errors into user-friendly messages.
+Handles expired access tokens and retries failed requests after obtaining a new token.
 
 ---
 
-# 16. Forms
+## Error Interceptor
 
-Reactive Forms should be used for every form.
+Converts backend errors into standardized frontend errors.
+
+---
+
+# 17. Forms
+
+Reactive Forms should be used throughout the application.
 
 Examples:
 
 - Login
 - Registration
-- Update Profile
-- Change Password
+- Profile Update
+- Password Change
 - Dictionary Import
 - Dictionary Metadata
 - Game Answer
@@ -378,27 +416,29 @@ Template-driven forms should not be used.
 
 ---
 
-# 17. Validation
+# 18. Validation
 
-Validation should exist on two levels.
+Validation exists on two levels.
 
-Frontend Validation
+## Frontend Validation
 
-- Required fields
-- Email format
-- Password confirmation
-- File type
-- Maximum length
+Examples:
 
-Backend Validation
+- required fields
+- email format
+- password confirmation
+- file type
+- maximum length
 
-Validation responses from the backend should be displayed next to the corresponding form fields.
+## Backend Validation
+
+Validation errors returned by the backend should be displayed next to the corresponding form fields.
 
 ---
 
-# 18. Error Handling
+# 19. Error Handling
 
-The application should gracefully handle:
+The frontend should gracefully handle:
 
 - Validation Errors
 - Business Errors
@@ -408,20 +448,20 @@ The application should gracefully handle:
 - Network Errors
 - Unexpected Server Errors
 
-Unexpected errors should never crash the application.
+Unexpected errors must never crash the application.
 
 ---
 
-# 19. Loading Strategy
+# 20. Loading Strategy
 
-Every page that retrieves backend data must support:
+Every data-driven page must support:
 
 - Loading
 - Success
 - Empty
 - Error
 
-Every form should support:
+Every form must support:
 
 - Initial
 - Validation Error
@@ -431,40 +471,40 @@ Every form should support:
 
 ---
 
-# 20. Responsive Design
+# 21. Responsive Design
 
-The application should fully support:
+The application should support:
 
 - Desktop
 - Tablet
 - Mobile
 
-The sidebar should collapse into a navigation drawer on smaller screens.
+The sidebar should automatically collapse into a navigation drawer on smaller screens.
 
 ---
 
-# 21. Accessibility
+# 22. Accessibility
 
-The frontend should follow basic accessibility guidelines.
+The frontend should follow basic accessibility principles.
 
 Examples:
 
 - Semantic HTML
 - Keyboard navigation
+- Visible focus indicators
 - Proper labels
-- Focus indicators
 - ARIA attributes where appropriate
 - Sufficient color contrast
 
 ---
 
-# 22. Future Enhancements
+# 23. Future Enhancements
 
 The following features are intentionally excluded from the MVP:
 
 - Dark Mode
 - Push Notifications
-- Progressive Web App
+- Progressive Web App (PWA)
 - Offline Mode
 - AI Learning Assistant
 - Dictionary Sharing
@@ -472,11 +512,28 @@ The following features are intentionally excluded from the MVP:
 - Social Features
 - Keyboard Shortcuts
 
-These features may be implemented in future versions.
+These may be implemented in future versions.
 
 ---
 
-# 23. Development Rules for Claude Code
+# 24. Development Workflow
+
+The recommended implementation order is:
+
+1. Application Shell
+2. Authentication
+3. Dictionaries
+4. Games
+5. Statistics
+6. Profile
+7. UI Polish
+8. Performance Optimizations
+
+Each feature should be completed end-to-end before moving to the next feature.
+
+---
+
+# 25. Development Rules for Claude Code
 
 When generating Angular code:
 
@@ -487,14 +544,14 @@ When generating Angular code:
 - Use feature-based architecture.
 - Generate lazy-loaded feature routes.
 - Keep pages thin.
-- Move reusable UI into Shared components.
+- Move reusable UI into the Shared layer.
 - Keep business logic inside services.
 - Never call HttpClient directly from components.
-- Use Angular Signals for local state.
+- Use Angular Signals for local feature state.
 - Use Reactive Forms.
 - Use Angular Material components where appropriate.
 - Use placeholder styling only.
 - Do not invent backend endpoints.
 - Do not implement backend business logic.
-- Ensure the application compiles successfully.
-- Generate clean, readable and maintainable code suitable for a production-quality portfolio project.
+- Keep the code modular, readable and maintainable.
+- Ensure the Angular application compiles successfully.
