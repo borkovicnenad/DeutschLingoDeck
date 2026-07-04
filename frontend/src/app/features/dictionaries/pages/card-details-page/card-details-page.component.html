@@ -1,0 +1,61 @@
+@if (error()) {
+  <app-inline-alert
+    tone="warning"
+    [message]="
+      usingSampleData()
+        ? 'Couldn\'t reach the server — showing a sample card.'
+        : 'Couldn\'t refresh this card — showing the last loaded data.'
+    "
+    [retryable]="true"
+    (retry)="load()"
+  />
+}
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" class="card-details__progress" />
+}
+
+@if (card(); as card) {
+  <app-page-header [title]="(card.article ? card.article + ' ' : '') + card.sourceText">
+    <div actions>
+      <a matButton [routerLink]="['/dictionaries', dictionaryId()]">
+        <mat-icon>arrow_back</mat-icon>
+        Back to Dictionary
+      </a>
+    </div>
+  </app-page-header>
+
+  <dl class="card-details">
+    <dt>Card type</dt>
+    <dd>{{ card.cardType }}</dd>
+
+    <dt>Primary translation</dt>
+    <dd>{{ card.primaryTranslation }}</dd>
+
+    @if (card.acceptedAnswers?.length) {
+      <dt>Accepted answers</dt>
+      <dd>
+        <mat-chip-set>
+          @for (answer of card.acceptedAnswers; track answer) {
+            <mat-chip>{{ answer }}</mat-chip>
+          }
+        </mat-chip-set>
+      </dd>
+    }
+
+    @if (card.example) {
+      <dt>Example sentence</dt>
+      <dd>{{ card.example }}</dd>
+    }
+
+    @if (card.notes) {
+      <dt>Notes</dt>
+      <dd>{{ card.notes }}</dd>
+    }
+
+    @if (card.difficultyLevel !== null && card.difficultyLevel !== undefined) {
+      <dt>Difficulty</dt>
+      <dd>{{ card.difficultyLevel }}</dd>
+    }
+  </dl>
+}

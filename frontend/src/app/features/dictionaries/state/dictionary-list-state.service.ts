@@ -1,0 +1,86 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+
+import { AppError } from '../../../shared/models/api-error.model';
+import { SAMPLE_DICTIONARIES } from '../dictionaries.sample-data';
+import { DictionarySummary } from '../models/dictionary.model';
+import { DictionaryApiService } from '../services/dictionary-api.service';
+
+/**
+ * Local reactive state for the Dictionary List page.
+ *
+ * Starts out showing static sample dictionaries so the page is never empty
+ * and is fully navigable before/without a live backend. A successful load()
+ * always replaces the sample data with the real response (including a
+ * genuinely empty list); a failed load() keeps the sample data on screen and
+ * only surfaces `error` for a non-blocking notice.
+ */
+@Injectable()
+export class DictionaryListStateService {
+  private readonly dictionaryApi = inject(DictionaryApiService);
+
+  private readonly dictionariesSignal = signal<DictionarySummary[]>(SAMPLE_DICTIONARIES);
+  private readonly loadingSignal = signal(false);
+  private readonly errorSignal = signal<AppError | null>(null);
+  private readonly usingSampleDataSignal = signal(true);
+  private readonly pageSignal = signal(0);
+  private readonly sizeSignal = signal(20);
+  private readonly totalElementsSignal = signal(SAMPLE_DICTIONARIES.length);
+  private readonly searchTermSignal = signal('');
+
+  readonly loading = this.loadingSignal.asReadonly();
+  readonly error = this.errorSignal.asReadonly();
+  readonly usingSampleData = this.usingSampleDataSignal.asReadonly();
+  readonly page = this.pageSignal.asReadonly();
+  readonly size = this.sizeSignal.asReadonly();
+  readonly totalElements = this.totalElementsSignal.asReadonly();
+  readonly searchTerm = this.searchTermSignal.asReadonly();
+
+  /**
+   * Filters the currently loaded page client-side. The backend does not
+   * expose a name search parameter, so search is limited to the loaded page.
+   */
+  readonly dictionaries = computed(() => {
+    const term = this.searchTermSignal().trim().toLowerCase();
+    const dictionaries = this.dictionariesSignal();
+    return term ? dictionaries.filter((d) => d.name.toLowerCase().includes(term)) : dictionaries;
+  });
+
+  readonly isEmpty = computed(
+    () => !this.loadingSignal() && !this.errorSignal() && this.dictionariesSignal().length === 0,
+  );
+
+  /** True when a search term is active but matches nothing on the loaded page. */
+  readonly hasNoSearchResults = computed(
+    () => !this.isEmpty() && this.searchTermSignal().trim().length > 0 && this.dictionaries().length === 0,
+  );
+
+  load(page = this.pageSignal(), size = this.sizeSignal()): void {
+    this.loadingSignal.set(true);
+    this.errorSignal.set(null);
+
+    this.dictionaryApi.list(page, size).subscribe({
+      next: (response) => {
+        this.dictionariesSignal.set(response.content);
+        this.pageSignal.set(response.page);
+        this.sizeSignal.set(response.size);
+        this.totalElementsSignal.set(response.totalElements);
+        this.usingSampleDataSignal.set(false);
+        this.loadingSignal.set(false);
+      },
+      error: (error: AppError) => {
+        this.errorSignal.set(error);
+        this.loadingSignal.set(false);
+      },
+    });
+  }
+
+  setSearchTerm(term: string): void {
+    this.searchTermSignal.set(term);
+  }
+
+  removeLocally(dictionaryId: number): void {
+    this.dictionariesSignal.update((dictionaries) =>
+      dictionaries.filter((d) => d.id !== dictionaryId),
+    );
+  }
+}

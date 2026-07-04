@@ -1,0 +1,31 @@
+.import-form-card,
+.import-report {
+  max-width: 40rem;
+}
+
+.import-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.import-form__file {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.import-form__file-name {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.import-form__languages {
+  display: flex;
+  gap: 1rem;
+}
+
+.import-form__languages mat-form-field {
+  flex: 1;
+}

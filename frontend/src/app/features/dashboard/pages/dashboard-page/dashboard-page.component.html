@@ -1,0 +1,114 @@
+<app-page-header
+  [title]="'Welcome back, ' + (authService.currentUser()?.displayName ?? '') + '!'"
+  subtitle="Here's an overview of your learning progress."
+/>
+
+@if (activeGame(); as game) {
+  <mat-card appearance="outlined" class="dashboard__resume">
+    <mat-card-content class="dashboard__resume-content">
+      <mat-icon>history</mat-icon>
+      <div>
+        <p><strong>You have an unfinished game.</strong></p>
+        <p>{{ game.answeredCards }} / {{ game.totalCards }} cards answered.</p>
+      </div>
+      <a matButton="filled" [routerLink]="['/game', game.id]">Resume</a>
+    </mat-card-content>
+  </mat-card>
+}
+
+<section class="dashboard__section">
+  @if (statisticsError()) {
+    <app-inline-alert
+      tone="warning"
+      [message]="
+        statisticsUsingSampleData()
+          ? 'Couldn\'t reach the server — showing sample statistics.'
+          : 'Couldn\'t refresh statistics — showing the last loaded data.'
+      "
+      [retryable]="true"
+      (retry)="loadStatistics()"
+    />
+  }
+  @if (statisticsLoading()) {
+    <mat-progress-bar mode="indeterminate" class="dashboard__progress" />
+  }
+  @if (statistics(); as statistics) {
+    <div class="dashboard__stats">
+      <app-stat-card label="Total Games" [value]="statistics.totalGames ?? 0" icon="sports_esports" />
+      <app-stat-card
+        label="Overall Accuracy"
+        [value]="((statistics.overallAccuracy ?? 0) * 100).toFixed(0) + '%'"
+        icon="target"
+      />
+      <app-stat-card
+        label="Current Streak"
+        [value]="statistics.currentLearningStreak ?? 0"
+        icon="local_fire_department"
+      />
+    </div>
+  }
+</section>
+
+<section class="dashboard__section">
+  <h2>Quick Actions</h2>
+  <div class="dashboard__quick-actions">
+    <a matButton="outlined" routerLink="/dictionaries/import">
+      <mat-icon>upload_file</mat-icon>
+      Import Dictionary
+    </a>
+    <a matButton="outlined" routerLink="/game/start">
+      <mat-icon>play_arrow</mat-icon>
+      Start Game
+    </a>
+    <a matButton="outlined" routerLink="/statistics">
+      <mat-icon>insights</mat-icon>
+      View Statistics
+    </a>
+  </div>
+</section>
+
+<section class="dashboard__section">
+  <h2>Your Dictionaries</h2>
+  @if (dictionariesError()) {
+    <app-inline-alert
+      tone="warning"
+      [message]="
+        dictionariesUsingSampleData()
+          ? 'Couldn\'t reach the server — showing sample dictionaries.'
+          : 'Couldn\'t refresh dictionaries — showing the last loaded data.'
+      "
+      [retryable]="true"
+      (retry)="loadDictionaries()"
+    />
+  }
+  @if (dictionariesLoading()) {
+    <mat-progress-bar mode="indeterminate" class="dashboard__progress" />
+  }
+  @if (dictionaries().length === 0) {
+    <app-empty-state
+      icon="menu_book"
+      title="No dictionaries yet"
+      message="Import your first Excel dictionary to start learning."
+    >
+      <a actions matButton="filled" routerLink="/dictionaries/import">Import Dictionary</a>
+    </app-empty-state>
+  } @else {
+    <div class="dashboard__dictionaries">
+      @for (dictionary of dictionaries(); track dictionary.id) {
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-card-title>{{ dictionary.name }}</mat-card-title>
+            <mat-card-subtitle>
+              {{ dictionary.sourceLanguage.toUpperCase() }} → {{ dictionary.targetLanguage.toUpperCase() }}
+              · {{ dictionary.cardCount }} cards
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-actions>
+            <a matButton [routerLink]="['/dictionaries', dictionary.id]">Open</a>
+          </mat-card-actions>
+        </mat-card>
+      }
+    </div>
+    <a routerLink="/dictionaries">View all dictionaries</a>
+  }
+</section>

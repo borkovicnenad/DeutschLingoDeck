@@ -1,0 +1,204 @@
+<app-page-header title="Statistics" subtitle="Track your learning progress over time." />
+
+<div class="statistics__filters">
+  <mat-form-field appearance="outline">
+    <mat-label>From</mat-label>
+    <input
+      matInput
+      type="date"
+      [ngModel]="fromDate()"
+      (ngModelChange)="fromDate.set($event); onDateFilterChange()"
+    />
+  </mat-form-field>
+  <mat-form-field appearance="outline">
+    <mat-label>To</mat-label>
+    <input
+      matInput
+      type="date"
+      [ngModel]="toDate()"
+      (ngModelChange)="toDate.set($event); onDateFilterChange()"
+    />
+  </mat-form-field>
+</div>
+
+<section class="statistics__section">
+  @if (overviewError()) {
+    <app-inline-alert
+      tone="warning"
+      [message]="
+        overviewUsingSampleData()
+          ? 'Couldn\'t reach the server — showing sample overview statistics.'
+          : 'Couldn\'t refresh the overview — showing the last loaded data.'
+      "
+      [retryable]="true"
+      (retry)="loadOverview()"
+    />
+  }
+  @if (overviewLoading()) {
+    <mat-progress-bar mode="indeterminate" class="statistics__progress" />
+  }
+  @if (overview(); as overview) {
+    <div class="statistics__overview">
+      <app-stat-card label="Total Games" [value]="overview.totalGames ?? 0" icon="sports_esports" />
+      <app-stat-card
+        label="Overall Accuracy"
+        [value]="((overview.overallAccuracy ?? 0) * 100).toFixed(0) + '%'"
+        icon="target"
+      />
+      <app-stat-card label="Total Answers" [value]="overview.totalAnswers ?? 0" icon="quiz" />
+      <app-stat-card
+        label="Current Streak"
+        [value]="overview.currentLearningStreak ?? 0"
+        icon="local_fire_department"
+      />
+      <app-stat-card
+        label="Longest Streak"
+        [value]="overview.longestLearningStreak ?? 0"
+        icon="emoji_events"
+      />
+    </div>
+  }
+</section>
+
+<section class="statistics__section">
+  <h2>Dictionary Statistics</h2>
+  @if (dictionaryStatisticsError()) {
+    <app-inline-alert
+      tone="warning"
+      [message]="
+        dictionaryStatisticsUsingSampleData()
+          ? 'Couldn\'t reach the server — showing sample dictionary statistics.'
+          : 'Couldn\'t refresh dictionary statistics — showing the last loaded data.'
+      "
+      [retryable]="true"
+      (retry)="loadDictionaryStatistics()"
+    />
+  }
+  @if (dictionaryStatisticsLoading()) {
+    <mat-progress-bar mode="indeterminate" class="statistics__progress" />
+  }
+  @if (dictionaryStatistics().length === 0) {
+    <app-empty-state icon="menu_book" title="No dictionary statistics yet" />
+  } @else {
+    <table mat-table [dataSource]="dictionaryStatistics()" class="statistics__table">
+      <ng-container matColumnDef="dictionaryName">
+        <th mat-header-cell *matHeaderCellDef>Dictionary</th>
+        <td mat-cell *matCellDef="let stat">{{ stat.dictionaryName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="completedGames">
+        <th mat-header-cell *matHeaderCellDef>Completed Games</th>
+        <td mat-cell *matCellDef="let stat">{{ stat.completedGames }}</td>
+      </ng-container>
+      <ng-container matColumnDef="averageAccuracy">
+        <th mat-header-cell *matHeaderCellDef>Avg. Accuracy</th>
+        <td mat-cell *matCellDef="let stat">
+          {{ stat.averageAccuracy !== undefined ? (stat.averageAccuracy * 100).toFixed(0) + '%' : '—' }}
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="masteredCards">
+        <th mat-header-cell *matHeaderCellDef>Mastered</th>
+        <td mat-cell *matCellDef="let stat">{{ stat.masteredCards }}</td>
+      </ng-container>
+      <ng-container matColumnDef="difficultCards">
+        <th mat-header-cell *matHeaderCellDef>Difficult</th>
+        <td mat-cell *matCellDef="let stat">{{ stat.difficultCards }}</td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="dictionaryColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: dictionaryColumns"></tr>
+    </table>
+  }
+</section>
+
+<section class="statistics__section">
+  <h2>Card Statistics</h2>
+  @if (cardStatisticsError()) {
+    <app-inline-alert
+      tone="warning"
+      [message]="
+        cardStatisticsUsingSampleData()
+          ? 'Couldn\'t reach the server — showing sample card statistics.'
+          : 'Couldn\'t refresh card statistics — showing the last loaded data.'
+      "
+      [retryable]="true"
+      (retry)="loadCardStatistics()"
+    />
+  }
+  @if (cardStatisticsLoading()) {
+    <mat-progress-bar mode="indeterminate" class="statistics__progress" />
+  }
+  @if (cardStatistics().length === 0) {
+    <app-empty-state icon="style" title="No card statistics yet" />
+  } @else {
+    <table mat-table [dataSource]="cardStatistics()" class="statistics__table">
+      <ng-container matColumnDef="sourceText">
+        <th mat-header-cell *matHeaderCellDef>Card</th>
+        <td mat-cell *matCellDef="let stat">{{ stat.sourceText }}</td>
+      </ng-container>
+      <ng-container matColumnDef="timesShown">
+        <th mat-header-cell *matHeaderCellDef>Times Shown</th>
+        <td mat-cell *matCellDef="let stat">{{ stat.timesShown }}</td>
+      </ng-container>
+      <ng-container matColumnDef="successRate">
+        <th mat-header-cell *matHeaderCellDef>Success Rate</th>
+        <td mat-cell *matCellDef="let stat">
+          {{ stat.successRate !== undefined ? (stat.successRate * 100).toFixed(0) + '%' : '—' }}
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="lastShownAt">
+        <th mat-header-cell *matHeaderCellDef>Last Shown</th>
+        <td mat-cell *matCellDef="let stat">
+          {{ stat.lastShownAt ? (stat.lastShownAt | date: 'short') : '—' }}
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="cardColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: cardColumns"></tr>
+    </table>
+  }
+</section>
+
+<section class="statistics__section">
+  <h2>Learning History</h2>
+  @if (learningHistoryError()) {
+    <app-inline-alert
+      tone="warning"
+      [message]="
+        learningHistoryUsingSampleData()
+          ? 'Couldn\'t reach the server — showing sample learning history.'
+          : 'Couldn\'t refresh learning history — showing the last loaded data.'
+      "
+      [retryable]="true"
+      (retry)="loadLearningHistory()"
+    />
+  }
+  @if (learningHistoryLoading()) {
+    <mat-progress-bar mode="indeterminate" class="statistics__progress" />
+  }
+  @if (learningHistory().length === 0) {
+    <app-empty-state icon="history" title="No learning history yet" />
+  } @else {
+    <table mat-table [dataSource]="learningHistory()" class="statistics__table">
+      <ng-container matColumnDef="dictionaryName">
+        <th mat-header-cell *matHeaderCellDef>Dictionary</th>
+        <td mat-cell *matCellDef="let entry">{{ entry.dictionaryName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef>Status</th>
+        <td mat-cell *matCellDef="let entry">{{ entry.status }}</td>
+      </ng-container>
+      <ng-container matColumnDef="accuracy">
+        <th mat-header-cell *matHeaderCellDef>Accuracy</th>
+        <td mat-cell *matCellDef="let entry">
+          {{ entry.accuracy !== undefined ? (entry.accuracy * 100).toFixed(0) + '%' : '—' }}
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="startedAt">
+        <th mat-header-cell *matHeaderCellDef>Started</th>
+        <td mat-cell *matCellDef="let entry">
+          {{ entry.startedAt ? (entry.startedAt | date: 'short') : '—' }}
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="historyColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: historyColumns"></tr>
+    </table>
+  }
+</section>

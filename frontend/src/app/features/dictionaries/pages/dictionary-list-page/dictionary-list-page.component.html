@@ -1,0 +1,114 @@
+<app-page-header title="Dictionaries" subtitle="Manage your personal vocabulary dictionaries.">
+  <div actions>
+    <a matButton="filled" routerLink="/dictionaries/import">
+      <mat-icon>upload_file</mat-icon>
+      Import Dictionary
+    </a>
+  </div>
+</app-page-header>
+
+<mat-form-field appearance="outline" class="dictionary-list__search">
+  <mat-label>Search dictionaries</mat-label>
+  <input
+    matInput
+    [value]="state.searchTerm()"
+    (input)="onSearch($event)"
+    placeholder="Search by name"
+  />
+  <mat-icon matPrefix>search</mat-icon>
+</mat-form-field>
+
+@if (state.error()) {
+  <app-inline-alert
+    tone="warning"
+    [message]="
+      state.usingSampleData()
+        ? 'Couldn\'t reach the server — showing sample dictionaries.'
+        : 'Couldn\'t refresh dictionaries — showing the last loaded data.'
+    "
+    [retryable]="true"
+    (retry)="state.load()"
+  />
+}
+
+@if (state.loading()) {
+  <mat-progress-bar mode="indeterminate" class="dictionary-list__progress" />
+}
+
+@if (state.isEmpty()) {
+  <app-empty-state
+    icon="menu_book"
+    title="No dictionaries yet"
+    message="Import your first Excel dictionary to start learning."
+  >
+    <a actions matButton="filled" routerLink="/dictionaries/import">Import Dictionary</a>
+  </app-empty-state>
+} @else if (state.hasNoSearchResults()) {
+  <app-empty-state
+    icon="search_off"
+    title="No matching dictionaries"
+    message="No dictionaries match your search on this page."
+  />
+} @else {
+  <table mat-table [dataSource]="state.dictionaries()" class="dictionary-list__table">
+    <ng-container matColumnDef="name">
+      <th mat-header-cell *matHeaderCellDef>Name</th>
+      <td mat-cell *matCellDef="let dictionary">
+        <a [routerLink]="['/dictionaries', dictionary.id]">{{ dictionary.name }}</a>
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="languages">
+      <th mat-header-cell *matHeaderCellDef>Languages</th>
+      <td mat-cell *matCellDef="let dictionary">
+        {{ dictionary.sourceLanguage.toUpperCase() }} → {{ dictionary.targetLanguage.toUpperCase() }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="cardCount">
+      <th mat-header-cell *matHeaderCellDef>Cards</th>
+      <td mat-cell *matCellDef="let dictionary">{{ dictionary.cardCount }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="createdAt">
+      <th mat-header-cell *matHeaderCellDef>Created</th>
+      <td mat-cell *matCellDef="let dictionary">{{ dictionary.createdAt | date: 'mediumDate' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="actions">
+      <th mat-header-cell *matHeaderCellDef>Actions</th>
+      <td mat-cell *matCellDef="let dictionary">
+        <a mat-icon-button [routerLink]="['/dictionaries', dictionary.id]" matTooltip="Open">
+          <mat-icon>visibility</mat-icon>
+        </a>
+        <button
+          mat-icon-button
+          type="button"
+          matTooltip="Start Game"
+          (click)="startGame(dictionary.id)"
+        >
+          <mat-icon>play_arrow</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          type="button"
+          matTooltip="Delete"
+          (click)="deleteDictionary(dictionary.id, dictionary.name)"
+        >
+          <mat-icon>delete</mat-icon>
+        </button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+  </table>
+
+  <mat-paginator
+    [length]="state.totalElements()"
+    [pageIndex]="state.page()"
+    [pageSize]="state.size()"
+    [pageSizeOptions]="[10, 20, 50]"
+    (page)="onPage($event)"
+  />
+}

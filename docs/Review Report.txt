@@ -1,0 +1,163 @@
+DeutschLingoDeck Frontend — Architecture Review
+=================================================
+
+Reviewed against: Development Guidelines, Frontend Architecture, Screen Specification,
+and the OpenAPI spec. No code was modified during this review. Findings are ordered
+by priority.
+
+
+HIGH PRIORITY — CORRECTNESS BUGS
+---------------------------------
+
+1. Automatic token refresh (UC-032) is silently broken by interceptor ordering
+
+   app.config.ts:34 registers interceptors as:
+
+       withInterceptors([authInterceptor, refreshTokenInterceptor, errorInterceptor])
+
+   Angular's functional interceptor chain executes the REQUEST phase in array order,
+   but the RESPONSE/ERROR phase in reverse — the last interceptor is closest to the
+   backend and sees the raw response first. That means errorInterceptor
+   (error.interceptor.ts) converts every HttpErrorResponse into a plain AppError object
+   BEFORE refreshTokenInterceptor ever sees it. Its check
+   `error instanceof HttpErrorResponse && error.status === 401`
+   (refresh-token.interceptor.ts:32) will therefore never be true, and the entire
+   refresh-on-401 flow — a core cross-cutting use case — never fires.
+
+   Fix: swap the order so refreshTokenInterceptor runs closer to the backend than
+   errorInterceptor: [authInterceptor, errorInterceptor, refreshTokenInterceptor].
+
+2. UC-039 "Handle Forbidden Access" has no wiring — /access-denied is an orphaned route
+
+   The route exists (app.routes.ts:51) but nothing in the codebase ever navigates to
+   it. error.interceptor.ts normalizes a 403 into an AppError and lets it bubble to
+   whichever page happened to make the call, where it typically just renders a
+   generic "we couldn't load this" message. Per the Use Cases doc, a 403 should
+   redirect to the dedicated Access Denied screen. Recommend handling status === 403
+   centrally (either in error.interceptor.ts or a small dedicated interceptor) with a
+   router.navigateByUrl('/access-denied').
+
+
+MEDIUM PRIORITY — ARCHITECTURAL CONSISTENCY
+---------------------------------------------
+
+3. Cross-feature imports violate the documented feature-independence rule
+
+   Frontend Architecture §10: "Each feature should be as independent as possible.
+   Communication between features should occur only through shared services."
+   Confirmed violations:
+
+   - dashboard-page.component.ts imports models AND API services directly from
+     dictionaries, games, and statistics (3 features in one file).
+   - start-game-page.component.ts (games feature) imports DictionaryApiService /
+     DictionarySummary from dictionaries.
+   - features/games/models/game.model.ts:1 imports CardType from
+     features/dictionaries/models/card-type.enum.
+
+   This is architecturally understandable (Dashboard is inherently a cross-feature
+   aggregation view, and CardType is a shared vocabulary), but it's currently an
+   IMPLICIT artifact rather than a deliberate policy. Two concrete options worth
+   deciding explicitly before more features pile on this pattern:
+
+   - Promote read-only, stateless *ApiService classes that are consumed
+     cross-feature (Dictionary/Game/Statistics) into core/, the same way
+     AuthApiService already lives there — this is the cleanest fix and costs
+     nothing since these services have no business logic.
+   - Move CardType (and possibly the base Card/CurrentCard shape) into
+     shared/models/, since it's genuinely a cross-domain primitive, not a
+     Dictionary-only concept.
+
+4. Duplicated code
+
+   - login-page.component.css and register-page.component.css are byte-identical
+     (confirmed via diff). Should share one stylesheet (e.g. a small shared
+     auth-layout class or a common auth-page.css imported by both).
+   - Identical 6-line "find the user's active game" lookup
+     (gameApi.list({status:'IN_PROGRESS', size:1}) -> gameApi.getById(...)) is
+     duplicated verbatim in dashboard-page.component.ts:66-71 and
+     start-game-page.component.ts:66-71. This is exactly the kind of cross-cutting
+     logic (UC-035) that should live once — e.g. a
+     findActiveGame(): Observable<Game | null> method on GameApiService.
+   - The dictionary-deletion confirmation dialog (title, message copy,
+     confirmLabel) is duplicated verbatim between
+     dictionary-list-page.component.ts:73-78 and
+     dictionary-details-page.component.ts:150-155.
+
+5. Inconsistent page-state pattern with no documented rule
+
+   DictionaryListStateService and ActiveGameStateService extract a dedicated
+   component-provided state class, while structurally similar pages (Dictionary
+   Details, Card Details, Profile, Game Summary, Statistics Dashboard, Game
+   History, Dashboard) manage the same kind of loading/error/data signals inline
+   in the component. Both approaches are individually reasonable, but right now
+   the split looks incidental rather than a deliberate threshold (e.g. "extract a
+   state service once a page has more than N async sources or user-triggered
+   mutations"). Worth writing down the rule so it's applied consistently as more
+   features are added.
+
+6. Response-time measurement starts too early in the Active Game flow
+
+   In active-game-state.service.ts:71, questionStartedAt resets the instant the
+   answer validation response arrives (inside submitAnswer's next callback) — i.e.
+   while the feedback panel is still on screen. The user then reads the feedback
+   and clicks "Continue" before actually seeing the next card. The clock should
+   instead reset in continue() (active-game-page.component.ts), when the next card
+   is actually displayed, otherwise responseTimeMs sent to the backend/statistics
+   will be inflated by however long the user spends reading feedback.
+
+7. Dictionary search "no results" isn't a real state
+
+   DictionaryListStateService.isEmpty (dictionary-list-state.service.ts) checks
+   the UNFILTERED dictionariesSignal().length, not the search-filtered
+   dictionaries() computed value. If a search term matches nothing, isEmpty()
+   stays false, so the template falls through to rendering an empty <table> with
+   a header row and no body — no "no dictionaries match your search" messaging.
+   Minor, but worth a distinct state before this pattern gets copied elsewhere.
+
+
+LOW PRIORITY — POLISH & PRE-BUSINESS-LOGIC IMPROVEMENTS
+---------------------------------------------------------
+
+8. No retry logic anywhere, despite Frontend Architecture explicitly scoping
+   "retry logic" as an RxJS responsibility (§12, §9.9 of the Documentation PDF).
+   Worth adding basic retry()/backoff for idempotent GETs before real traffic
+   hits the API.
+
+9. $any($event.target).value in dictionary-list-page.component.html:15 bypasses
+   template type-checking. Idiomatic fix: pass $event and cast
+   event.target as HTMLInputElement inside the component method instead.
+
+10. Zero unit tests beyond the default app.spec.ts scaffold. Given bug #1 above,
+    a basic interceptor-chain test would have caught the ordering issue
+    immediately — recommend prioritizing tests for AuthService, the guards, and
+    the interceptor chain before layering business logic on top of them.
+
+11. No ESLint / angular-eslint configured. Would catch unused imports, enforce
+    the Angular style guide automatically, and scale better than manual review as
+    features grow.
+
+12. Inconsistent date formatting — mediumDate, medium, short, and longDate are
+    each used in different pages with no shared convention. Consider a single
+    house style (or a small shared pipe/wrapper).
+
+13. games.routes.ts lazy-loads the SAME file under two different mount points
+    (GAME_ROUTES at /game, GAME_HISTORY_ROUTES at /games). Functionally correct
+    (bundlers dedupe the chunk), but unusual enough to warrant a one-line note if
+    the pattern is intentional.
+
+14. StartGamePageComponent reads its dictionaryId query param manually via
+    ActivatedRoute.snapshot while every other routed page relies on
+    withComponentInputBinding() for route/query param access — minor stylistic
+    inconsistency, easy to unify.
+
+
+WHAT'S HOLDING UP WELL
+------------------------
+
+Model shapes were re-verified field-by-field against every relevant OpenAPI
+schema (auth, profile, dictionaries, cards, games, statistics, paging, errors) —
+no further mismatches found beyond the GameSummaryResponse.dictionaryId issue
+already caught and fixed during the build. ChangeDetectionStrategy.OnPush is
+applied consistently across all 25 components. Signal-based input() is used
+everywhere with no legacy @Input()/@Output() decorators, and dependency
+injection is consistently inject()-based with no mixed constructor-DI style.

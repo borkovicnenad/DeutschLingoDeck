@@ -1,0 +1,41 @@
+.dictionary-details__stats p {
+  margin: 0.25rem 0;
+}
+
+.dictionary-details__edit-card {
+  max-width: 32rem;
+  margin-bottom: 1rem;
+}
+
+.dictionary-details__edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dictionary-details__languages {
+  display: flex;
+  gap: 1rem;
+}
+
+.dictionary-details__languages mat-form-field {
+  flex: 1;
+}
+
+.dictionary-details__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.dictionary-details__section-title {
+  margin-top: 2rem;
+}
+
+.dictionary-details__table {
+  width: 100%;
+}
+
+.dictionary-details__progress {
+  margin-bottom: 1rem;
+}

@@ -1,0 +1,23 @@
+.statistics__filters {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.statistics__section {
+  margin-bottom: 2rem;
+}
+
+.statistics__overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
+.statistics__table {
+  width: 100%;
+}
+
+.statistics__progress {
+  margin-bottom: 1rem;
+}

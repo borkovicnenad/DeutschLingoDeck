@@ -1,0 +1,13 @@
+.dictionary-list__search {
+  width: 100%;
+  max-width: 24rem;
+  margin-bottom: 1rem;
+}
+
+.dictionary-list__table {
+  width: 100%;
+}
+
+.dictionary-list__progress {
+  margin-bottom: 1rem;
+}

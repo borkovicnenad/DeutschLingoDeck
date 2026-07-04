@@ -1,0 +1,169 @@
+import { DatePipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatTableModule } from '@angular/material/table';
+import { Router, RouterLink } from '@angular/router';
+
+import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
+import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
+import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
+import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
+import { AppError } from '../../../../shared/models/api-error.model';
+import { SAMPLE_CARDS, SAMPLE_DICTIONARY_DETAIL } from '../../dictionaries.sample-data';
+import { CardSummary } from '../../models/card.model';
+import { DictionaryDetail } from '../../models/dictionary.model';
+import { DictionaryApiService } from '../../services/dictionary-api.service';
+
+@Component({
+  selector: 'app-dictionary-details-page',
+  imports: [
+    DatePipe,
+    ReactiveFormsModule,
+    RouterLink,
+    MatButtonModule,
+    MatIconModule,
+    MatCardModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatTableModule,
+    MatPaginatorModule,
+    MatProgressBarModule,
+    PageHeaderComponent,
+    EmptyStateComponent,
+    InlineAlertComponent,
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './dictionary-details-page.component.html',
+  styleUrl: './dictionary-details-page.component.css',
+})
+export class DictionaryDetailsPageComponent {
+  private readonly dictionaryApi = inject(DictionaryApiService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly formBuilder = inject(FormBuilder);
+  private readonly router = inject(Router);
+
+  readonly dictionaryId = input.required<string>();
+  private readonly dictionaryIdAsNumber = computed(() => Number(this.dictionaryId()));
+
+  protected readonly dictionary = signal<DictionaryDetail | null>(SAMPLE_DICTIONARY_DETAIL);
+  protected readonly loading = signal(false);
+  protected readonly error = signal<AppError | null>(null);
+  protected readonly usingSampleData = signal(true);
+  protected readonly editing = signal(false);
+
+  protected readonly cards = signal<CardSummary[]>(SAMPLE_CARDS);
+  protected readonly cardsLoading = signal(false);
+  protected readonly cardsPage = signal(0);
+  protected readonly cardsTotal = signal(SAMPLE_CARDS.length);
+  protected readonly displayedColumns = ['sourceText', 'primaryTranslation', 'cardType'];
+
+  protected readonly editForm = this.formBuilder.nonNullable.group({
+    name: [SAMPLE_DICTIONARY_DETAIL.name, [Validators.required, Validators.maxLength(150)]],
+    description: [SAMPLE_DICTIONARY_DETAIL.description ?? '', [Validators.maxLength(1000)]],
+    sourceLanguage: [SAMPLE_DICTIONARY_DETAIL.sourceLanguage, [Validators.required]],
+    targetLanguage: [SAMPLE_DICTIONARY_DETAIL.targetLanguage, [Validators.required]],
+  });
+
+  constructor() {
+    this.loadDictionary();
+    this.loadCards(0);
+  }
+
+  protected loadDictionary(): void {
+    this.loading.set(true);
+    this.error.set(null);
+
+    this.dictionaryApi.getById(this.dictionaryIdAsNumber()).subscribe({
+      next: (dictionary) => {
+        this.dictionary.set(dictionary);
+        this.editForm.patchValue(dictionary);
+        this.usingSampleData.set(false);
+        this.loading.set(false);
+      },
+      error: (error: AppError) => {
+        this.error.set(error);
+        this.loading.set(false);
+      },
+    });
+  }
+
+  private loadCards(page: number): void {
+    this.cardsLoading.set(true);
+
+    this.dictionaryApi.listCards(this.dictionaryIdAsNumber(), page).subscribe({
+      next: (response) => {
+        this.cards.set(response.content);
+        this.cardsPage.set(response.page);
+        this.cardsTotal.set(response.totalElements);
+        this.cardsLoading.set(false);
+      },
+      error: () => this.cardsLoading.set(false),
+    });
+  }
+
+  protected onCardsPage(event: PageEvent): void {
+    this.loadCards(event.pageIndex);
+  }
+
+  protected startEditing(): void {
+    this.editing.set(true);
+  }
+
+  protected cancelEditing(): void {
+    const dictionary = this.dictionary();
+    if (dictionary) {
+      this.editForm.patchValue(dictionary);
+    }
+    this.editing.set(false);
+  }
+
+  protected saveEditing(): void {
+    if (this.editForm.invalid) {
+      this.editForm.markAllAsTouched();
+      return;
+    }
+
+    this.dictionaryApi
+      .update(this.dictionaryIdAsNumber(), this.editForm.getRawValue())
+      .subscribe((dictionary) => {
+        this.dictionary.set(dictionary);
+        this.editing.set(false);
+      });
+  }
+
+  protected startGame(): void {
+    this.router.navigate(['/game/start'], {
+      queryParams: { dictionaryId: this.dictionaryIdAsNumber() },
+    });
+  }
+
+  protected deleteDictionary(): void {
+    const dictionary = this.dictionary();
+    if (!dictionary) {
+      return;
+    }
+
+    this.confirmDialog
+      .confirm({
+        title: 'Delete dictionary',
+        message: `"${dictionary.name}" will no longer be available for future learning sessions. Your historical statistics and completed games remain preserved.`,
+        confirmLabel: 'Delete',
+      })
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+
+        this.dictionaryApi.delete(this.dictionaryIdAsNumber()).subscribe(() => {
+          this.router.navigateByUrl('/dictionaries');
+        });
+      });
+  }
+}

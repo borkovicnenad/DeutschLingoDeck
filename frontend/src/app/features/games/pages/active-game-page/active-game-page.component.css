@@ -1,0 +1,78 @@
+.active-game__loading-bar {
+  margin-bottom: 1rem;
+}
+
+.active-game__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.active-game__progress {
+  flex: 1;
+}
+
+.active-game__progress-label {
+  font-variant-numeric: tabular-nums;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.active-game__timer {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.active-game__card {
+  max-width: 32rem;
+  margin-bottom: 1.5rem;
+}
+
+.active-game__prompt {
+  font-size: 1.75rem;
+  font-weight: 500;
+  margin: 0 0 0.5rem;
+}
+
+.active-game__example {
+  color: var(--mat-sys-on-surface-variant);
+  font-style: italic;
+  margin: 0 0 1rem;
+}
+
+.active-game__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.active-game__answer-field {
+  width: 100%;
+}
+
+.active-game__feedback {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.active-game__feedback p {
+  margin: 0 0 0.5rem;
+}
+
+.active-game__feedback--correct {
+  background: #d3ead9;
+  color: #1e4620;
+}
+
+.active-game__feedback--incorrect {
+  background: #f8d7da;
+  color: #7a1f27;
+}
+
+.active-game__actions {
+  display: flex;
+  gap: 0.5rem;
+}

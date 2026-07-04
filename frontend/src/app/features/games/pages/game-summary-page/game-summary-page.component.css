@@ -1,0 +1,15 @@
+.game-summary__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.game-summary__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.game-summary__progress {
+  margin-bottom: 1rem;
+}

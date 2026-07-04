@@ -1,0 +1,26 @@
+.profile__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.profile__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.profile__error {
+  color: var(--mat-sys-error);
+  margin: 0;
+}
+
+.profile__success {
+  color: #1e4620;
+  margin: 0;
+}
+
+.profile__progress {
+  margin-bottom: 1rem;
+}

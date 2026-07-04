@@ -1,0 +1,101 @@
+<app-page-header title="Profile" subtitle="Manage your account settings." />
+
+@if (error()) {
+  <app-inline-alert
+    tone="warning"
+    [message]="
+      usingSampleData()
+        ? 'Couldn\'t reach the server — showing a sample profile.'
+        : 'Couldn\'t refresh your profile — showing the last loaded data.'
+    "
+    [retryable]="true"
+    (retry)="load()"
+  />
+}
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" class="profile__progress" />
+}
+
+@if (profile(); as profile) {
+  <div class="profile__grid">
+    <mat-card appearance="outlined">
+      <mat-card-header>
+        <mat-card-title>Profile Information</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <p><strong>Email:</strong> {{ profile.email }}</p>
+        <p><strong>Member since:</strong> {{ profile.createdAt | date: 'longDate' }}</p>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card appearance="outlined">
+      <mat-card-header>
+        <mat-card-title>Update Profile</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <form [formGroup]="profileForm" (ngSubmit)="saveProfile()" class="profile__form">
+          <mat-form-field appearance="outline">
+            <mat-label>Display name</mat-label>
+            <input matInput formControlName="displayName" />
+            @if (profileForm.controls.displayName.hasError('required')) {
+              <mat-error>Display name is required.</mat-error>
+            }
+          </mat-form-field>
+
+          @if (profileError()) {
+            <p class="profile__error" role="alert">{{ profileError() }}</p>
+          }
+          @if (profileSaved()) {
+            <p class="profile__success" role="status">Profile updated.</p>
+          }
+
+          <button matButton="filled" type="submit" [disabled]="profileSaving()">
+            @if (profileSaving()) { Saving... } @else { Save changes }
+          </button>
+        </form>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card appearance="outlined">
+      <mat-card-header>
+        <mat-card-title>Change Password</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <form [formGroup]="passwordForm" (ngSubmit)="changePassword()" class="profile__form">
+          <mat-form-field appearance="outline">
+            <mat-label>Current password</mat-label>
+            <input matInput type="password" formControlName="currentPassword" autocomplete="current-password" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>New password</mat-label>
+            <input matInput type="password" formControlName="newPassword" autocomplete="new-password" />
+            @if (passwordForm.controls.newPassword.hasError('minlength')) {
+              <mat-error>Password must be at least 12 characters.</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Confirm new password</mat-label>
+            <input matInput type="password" formControlName="confirmNewPassword" autocomplete="new-password" />
+            @if (passwordForm.hasError('passwordMismatch') && passwordForm.controls.confirmNewPassword.touched) {
+              <mat-error>Passwords do not match.</mat-error>
+            }
+          </mat-form-field>
+
+          @if (passwordError()) {
+            <p class="profile__error" role="alert">{{ passwordError() }}</p>
+          }
+          @if (passwordSaved()) {
+            <p class="profile__success" role="status">Password changed.</p>
+          }
+
+          <button matButton="filled" type="submit" [disabled]="passwordSaving()">
+            @if (passwordSaving()) { Saving... } @else { Change password }
+          </button>
+        </form>
+      </mat-card-content>
+    </mat-card>
+  </div>
+}

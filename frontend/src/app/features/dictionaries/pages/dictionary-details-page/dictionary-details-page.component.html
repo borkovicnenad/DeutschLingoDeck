@@ -1,0 +1,117 @@
+@if (error()) {
+  <app-inline-alert
+    tone="warning"
+    [message]="
+      usingSampleData()
+        ? 'Couldn\'t reach the server — showing a sample dictionary.'
+        : 'Couldn\'t refresh this dictionary — showing the last loaded data.'
+    "
+    [retryable]="true"
+    (retry)="loadDictionary()"
+  />
+}
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" class="dictionary-details__progress" />
+}
+
+@if (dictionary(); as dictionary) {
+  <app-page-header [title]="dictionary.name" [subtitle]="dictionary.description">
+    <div actions>
+      <button matButton="outlined" type="button" (click)="startEditing()">
+        <mat-icon>edit</mat-icon>
+        Edit
+      </button>
+      <button matButton="filled" type="button" (click)="startGame()">
+        <mat-icon>play_arrow</mat-icon>
+        Start Game
+      </button>
+      <button matButton type="button" (click)="deleteDictionary()">
+        <mat-icon>delete</mat-icon>
+        Delete
+      </button>
+    </div>
+  </app-page-header>
+
+  @if (editing()) {
+    <mat-card appearance="outlined" class="dictionary-details__edit-card">
+      <mat-card-content>
+        <form [formGroup]="editForm" (ngSubmit)="saveEditing()" class="dictionary-details__edit-form">
+          <mat-form-field appearance="outline">
+            <mat-label>Name</mat-label>
+            <input matInput formControlName="name" />
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Description</mat-label>
+            <textarea matInput formControlName="description" rows="2"></textarea>
+          </mat-form-field>
+          <div class="dictionary-details__languages">
+            <mat-form-field appearance="outline">
+              <mat-label>Source language</mat-label>
+              <input matInput formControlName="sourceLanguage" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Target language</mat-label>
+              <input matInput formControlName="targetLanguage" />
+            </mat-form-field>
+          </div>
+          <div class="dictionary-details__edit-actions">
+            <button matButton type="button" (click)="cancelEditing()">Cancel</button>
+            <button matButton="filled" type="submit">Save</button>
+          </div>
+        </form>
+      </mat-card-content>
+    </mat-card>
+  } @else {
+    <div class="dictionary-details__stats">
+      <p><strong>Languages:</strong> {{ dictionary.sourceLanguage.toUpperCase() }} → {{ dictionary.targetLanguage.toUpperCase() }}</p>
+      <p><strong>Cards:</strong> {{ dictionary.cardCount }}</p>
+      <p><strong>Created:</strong> {{ dictionary.createdAt | date: 'medium' }}</p>
+      @if (dictionary.updatedAt) {
+        <p><strong>Last updated:</strong> {{ dictionary.updatedAt | date: 'medium' }}</p>
+      }
+    </div>
+  }
+
+  <h2 class="dictionary-details__section-title">Cards</h2>
+
+  @if (cardsLoading()) {
+    <mat-progress-bar mode="indeterminate" class="dictionary-details__progress" />
+  }
+
+  @if (cards().length === 0) {
+    <app-empty-state icon="style" title="No cards in this dictionary" />
+  } @else {
+    <table mat-table [dataSource]="cards()" class="dictionary-details__table">
+      <ng-container matColumnDef="sourceText">
+        <th mat-header-cell *matHeaderCellDef>Source</th>
+        <td mat-cell *matCellDef="let card">
+          <a [routerLink]="['/dictionaries', dictionaryId(), 'cards', card.id]">
+            {{ card.article ? card.article + ' ' : '' }}{{ card.sourceText }}
+          </a>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="primaryTranslation">
+        <th mat-header-cell *matHeaderCellDef>Translation</th>
+        <td mat-cell *matCellDef="let card">{{ card.primaryTranslation }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="cardType">
+        <th mat-header-cell *matHeaderCellDef>Type</th>
+        <td mat-cell *matCellDef="let card">{{ card.cardType }}</td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+    </table>
+
+    <mat-paginator
+      [length]="cardsTotal()"
+      [pageIndex]="cardsPage()"
+      [pageSize]="20"
+      [hidePageSize]="true"
+      (page)="onCardsPage($event)"
+    />
+  }
+}

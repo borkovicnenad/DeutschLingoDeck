@@ -1,0 +1,52 @@
+<app-page-header title="Start Game" subtitle="Choose a dictionary and begin a learning session." />
+
+@if (activeGame(); as game) {
+  <mat-card appearance="outlined" class="start-game__resume">
+    <mat-card-content class="start-game__resume-content">
+      <mat-icon>history</mat-icon>
+      <div>
+        <p><strong>You have an unfinished game.</strong></p>
+        <p>{{ game.answeredCards }} / {{ game.totalCards }} cards answered.</p>
+      </div>
+      <button matButton="filled" type="button" (click)="resumeGame()">Resume</button>
+    </mat-card-content>
+  </mat-card>
+}
+
+<mat-card appearance="outlined" class="start-game__card">
+  @if (loadingDictionaries()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+  <mat-card-content>
+    <form [formGroup]="form" (ngSubmit)="submit()" class="start-game__form">
+      <mat-form-field appearance="outline">
+        <mat-label>Dictionary</mat-label>
+        <mat-select formControlName="dictionaryId">
+          @for (dictionary of dictionaries(); track dictionary.id) {
+            <mat-option [value]="dictionary.id">
+              {{ dictionary.name }} ({{ dictionary.cardCount }} cards)
+            </mat-option>
+          }
+        </mat-select>
+        @if (form.controls.dictionaryId.hasError('required')) {
+          <mat-error>Please select a dictionary.</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Game mode</mat-label>
+        <mat-select formControlName="gameMode">
+          <mat-option value="STANDARD">Standard</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      @if (startError()) {
+        <p class="start-game__error" role="alert">{{ startError()!.message }}</p>
+      }
+
+      <button matButton="filled" type="submit" [disabled]="starting()">
+        @if (starting()) { Starting... } @else { Start Game }
+      </button>
+    </form>
+  </mat-card-content>
+</mat-card>

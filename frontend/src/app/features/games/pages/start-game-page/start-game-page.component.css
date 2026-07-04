@@ -1,0 +1,29 @@
+.start-game__card {
+  max-width: 30rem;
+}
+
+.start-game__resume {
+  max-width: 30rem;
+  margin-bottom: 1rem;
+}
+
+.start-game__resume-content {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.start-game__resume-content p {
+  margin: 0;
+}
+
+.start-game__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.start-game__error {
+  color: var(--mat-sys-error);
+  margin: 0 0 0.5rem;
+}

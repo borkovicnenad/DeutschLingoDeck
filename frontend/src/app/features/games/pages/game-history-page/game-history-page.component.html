@@ -1,0 +1,87 @@
+<app-page-header title="Game History" subtitle="Review your previous learning sessions." />
+
+<mat-form-field appearance="outline" class="game-history__filter">
+  <mat-label>Status</mat-label>
+  <mat-select
+    [ngModel]="statusFilter()"
+    (ngModelChange)="onStatusFilterChange($event)"
+  >
+    <mat-option value="">All</mat-option>
+    @for (status of statuses; track status) {
+      <mat-option [value]="status">{{ status }}</mat-option>
+    }
+  </mat-select>
+</mat-form-field>
+
+@if (error()) {
+  <app-inline-alert
+    tone="warning"
+    [message]="
+      usingSampleData()
+        ? 'Couldn\'t reach the server — showing sample game history.'
+        : 'Couldn\'t refresh game history — showing the last loaded data.'
+    "
+    [retryable]="true"
+    (retry)="load()"
+  />
+}
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" class="game-history__progress" />
+}
+
+@if (games().length === 0) {
+  <app-empty-state
+    icon="sports_esports"
+    title="No games yet"
+    message="Start a learning session to see your history here."
+  >
+    <a actions routerLink="/game/start">Start a Game</a>
+  </app-empty-state>
+} @else {
+  <table mat-table [dataSource]="games()" class="game-history__table">
+    <ng-container matColumnDef="gameId">
+      <th mat-header-cell *matHeaderCellDef>Game</th>
+      <td mat-cell *matCellDef="let game">#{{ game.gameId }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let game">
+        <app-badge [variant]="game.status === 'FINISHED' ? 'success' : 'neutral'">
+          {{ game.status }}
+        </app-badge>
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="accuracy">
+      <th mat-header-cell *matHeaderCellDef>Accuracy</th>
+      <td mat-cell *matCellDef="let game">{{ (game.accuracy * 100).toFixed(0) }}%</td>
+    </ng-container>
+
+    <ng-container matColumnDef="duration">
+      <th mat-header-cell *matHeaderCellDef>Duration</th>
+      <td mat-cell *matCellDef="let game">
+        {{ game.durationSeconds !== undefined ? game.durationSeconds + 's' : '—' }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="actions">
+      <th mat-header-cell *matHeaderCellDef>Actions</th>
+      <td mat-cell *matCellDef="let game">
+        <a [routerLink]="['/game', game.gameId, 'summary']">View Summary</a>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+  </table>
+
+  <mat-paginator
+    [length]="totalElements()"
+    [pageIndex]="page()"
+    [pageSize]="size()"
+    [pageSizeOptions]="[10, 20, 50]"
+    (page)="onPage($event)"
+  />
+}

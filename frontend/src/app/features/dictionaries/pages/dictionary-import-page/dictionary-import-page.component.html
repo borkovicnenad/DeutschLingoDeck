@@ -1,0 +1,90 @@
+<app-page-header
+  title="Import Dictionary"
+  subtitle="Upload a vocabulary dictionary from an Excel file."
+/>
+
+@if (importResult(); as result) {
+  <mat-card appearance="outlined" class="import-report">
+    <mat-card-header>
+      <mat-card-title>Import complete</mat-card-title>
+      <mat-card-subtitle>{{ result.name }} — status: {{ result.status }}</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <p>{{ result.importedCards }} cards imported successfully.</p>
+      @if (result.warnings?.length) {
+        <h3>Warnings</h3>
+        <mat-list>
+          @for (warning of result.warnings; track warning) {
+            <mat-list-item>
+              <mat-icon matListItemIcon>warning</mat-icon>
+              <span matListItemTitle>{{ warning }}</span>
+            </mat-list-item>
+          }
+        </mat-list>
+      }
+    </mat-card-content>
+    <mat-card-actions>
+      <a matButton="filled" [routerLink]="['/dictionaries', result.dictionaryId]">
+        View Dictionary
+      </a>
+      <button matButton type="button" (click)="reset()">Import Another</button>
+    </mat-card-actions>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="import-form-card">
+    <mat-card-content>
+      <form [formGroup]="form" (ngSubmit)="submit()" class="import-form">
+        <label class="import-form__file">
+          <input type="file" accept=".xlsx,.xls" (change)="onFileSelected($event)" hidden #fileInput />
+          <button matButton="outlined" type="button" (click)="fileInput.click()">
+            <mat-icon>upload_file</mat-icon>
+            Select Excel File
+          </button>
+          @if (selectedFile(); as file) {
+            <span class="import-form__file-name">{{ file.name }}</span>
+          }
+        </label>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Dictionary name</mat-label>
+          <input matInput formControlName="name" />
+          @if (form.controls.name.hasError('required')) {
+            <mat-error>Name is required.</mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Description</mat-label>
+          <textarea matInput formControlName="description" rows="3"></textarea>
+        </mat-form-field>
+
+        <div class="import-form__languages">
+          <mat-form-field appearance="outline">
+            <mat-label>Source language</mat-label>
+            <input matInput formControlName="sourceLanguage" placeholder="hr" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Target language</mat-label>
+            <input matInput formControlName="targetLanguage" placeholder="de" />
+          </mat-form-field>
+        </div>
+
+        @if (submitError()) {
+          <app-error-state
+            [message]="submitError()!.message"
+            [retryable]="false"
+          />
+        }
+
+        @if (uploading()) {
+          <app-loading-spinner label="Uploading and validating dictionary..." />
+        } @else {
+          <button matButton="filled" type="submit" [disabled]="!selectedFile()">
+            Import Dictionary
+          </button>
+        }
+      </form>
+    </mat-card-content>
+  </mat-card>
+}

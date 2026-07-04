@@ -1,0 +1,41 @@
+@if (error()) {
+  <app-inline-alert
+    tone="warning"
+    [message]="
+      usingSampleData()
+        ? 'Couldn\'t reach the server — showing a sample summary.'
+        : 'Couldn\'t refresh this summary — showing the last loaded data.'
+    "
+    [retryable]="true"
+    (retry)="load()"
+  />
+}
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" class="game-summary__progress" />
+}
+
+@if (summary(); as summary) {
+  <app-page-header title="Game Summary" [subtitle]="'Status: ' + summary.status" />
+
+  <div class="game-summary__stats">
+    <app-stat-card label="Accuracy" [value]="(summary.accuracy * 100).toFixed(0) + '%'" icon="target" />
+    <app-stat-card label="Correct Answers" [value]="summary.correctAnswers" icon="check_circle" />
+    <app-stat-card label="Incorrect Answers" [value]="summary.incorrectAnswers" icon="cancel" />
+    @if (summary.durationSeconds !== undefined) {
+      <app-stat-card label="Duration" [value]="summary.durationSeconds + 's'" icon="schedule" />
+    }
+    @if (summary.averageResponseTimeMs !== undefined) {
+      <app-stat-card
+        label="Avg. Response Time"
+        [value]="(summary.averageResponseTimeMs / 1000).toFixed(1) + 's'"
+        icon="speed"
+      />
+    }
+  </div>
+
+  <div class="game-summary__actions">
+    <a matButton routerLink="/dashboard">Back to Dashboard</a>
+    <button matButton="filled" type="button" (click)="playAgain()">Play Again</button>
+  </div>
+}

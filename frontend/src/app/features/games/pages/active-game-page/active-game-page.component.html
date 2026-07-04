@@ -1,0 +1,77 @@
+@if (state.error()) {
+  <app-inline-alert
+    tone="warning"
+    [message]="
+      state.usingSampleData()
+        ? 'Couldn\'t reach the server — showing a sample game.'
+        : 'Couldn\'t refresh this game — showing the last loaded data.'
+    "
+    [retryable]="true"
+    (retry)="retryLoad()"
+  />
+}
+
+@if (state.loading()) {
+  <mat-progress-bar mode="indeterminate" class="active-game__loading-bar" />
+}
+
+@if (state.game(); as game) {
+  <div class="active-game__header">
+    <mat-progress-bar mode="determinate" [value]="state.progress()" class="active-game__progress" />
+    <span class="active-game__progress-label">
+      {{ game.answeredCards }} / {{ game.totalCards }}
+    </span>
+    <span class="active-game__timer">
+      <mat-icon>timer</mat-icon>
+      {{ elapsedSeconds() }}s
+    </span>
+  </div>
+
+  @if (game.currentCard; as card) {
+    <mat-card appearance="outlined" class="active-game__card">
+      <mat-card-content>
+        <p class="active-game__prompt">
+          {{ card.article ? card.article + ' ' : '' }}{{ card.sourceText }}
+        </p>
+        @if (card.example) {
+          <p class="active-game__example">{{ card.example }}</p>
+        }
+
+        @if (state.lastValidation(); as validation) {
+          <div
+            class="active-game__feedback"
+            [class.active-game__feedback--correct]="validation.correct"
+            [class.active-game__feedback--incorrect]="!validation.correct"
+            role="status"
+          >
+            <p><strong>{{ validation.correct ? 'Correct!' : validation.result }}</strong></p>
+            @if (!validation.correct) {
+              <p>Expected: {{ validation.expectedAnswer }}</p>
+            }
+            @if (validation.message) {
+              <p>{{ validation.message }}</p>
+            }
+            <button matButton="filled" type="button" (click)="continue()">Continue</button>
+          </div>
+        } @else {
+          <form [formGroup]="answerForm" (ngSubmit)="submitAnswer()" class="active-game__form">
+            <mat-form-field appearance="outline" class="active-game__answer-field">
+              <mat-label>Your answer</mat-label>
+              <input matInput formControlName="answer" autocomplete="off" />
+            </mat-form-field>
+            <button matButton="filled" type="submit" [disabled]="state.submitting()">
+              @if (state.submitting()) { Validating... } @else { Submit }
+            </button>
+          </form>
+        }
+      </mat-card-content>
+    </mat-card>
+  }
+
+  <div class="active-game__actions">
+    <button matButton type="button" (click)="abandonGame()">Abandon</button>
+    <button matButton="outlined" type="button" [disabled]="finishing()" (click)="finishGame()">
+      Finish
+    </button>
+  </div>
+}
