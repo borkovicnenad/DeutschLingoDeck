@@ -1,5 +1,6 @@
 package com.deutschlingodeck.security;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -8,33 +9,31 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Security skeleton for the API.
+ * Security configuration for the API: stateless JWT bearer authentication.
  *
- * <p>JWT authentication is not implemented yet, so every endpoint is
- * currently permitted. CSRF is disabled and the session is stateless since
- * this is a token-based API, not a browser session-based one.
- *
- * TODO: once JWT authentication is added:
- * <ul>
- *   <li>register a JWT authentication filter before
- *       {@code UsernamePasswordAuthenticationFilter}</li>
- *   <li>replace {@code anyRequest().permitAll()} with
- *       {@code anyRequest().authenticated()}, keeping
- *       {@link SecurityConstants#PUBLIC_ENDPOINTS} open</li>
- *   <li>configure an {@code AuthenticationProvider} backed by the user
- *       repository</li>
- * </ul>
+ * <p>{@link JwtAuthenticationFilter} runs before Spring Security's own
+ * authentication filter and populates the context from the
+ * {@code Authorization} header; {@link SecurityConstants#PUBLIC_ENDPOINTS}
+ * stays open (registration/login/refresh/docs/health), everything else
+ * requires a valid access token. CSRF is disabled and the session is
+ * stateless since this is a token-based API, not a browser session-based one.
  */
 @Configuration
 @EnableWebSecurity
+@EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfiguration {
 
 	private final RestAuthenticationEntryPoint authenticationEntryPoint;
+	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-	public SecurityConfiguration(RestAuthenticationEntryPoint authenticationEntryPoint) {
+	public SecurityConfiguration(
+			RestAuthenticationEntryPoint authenticationEntryPoint,
+			JwtAuthenticationFilter jwtAuthenticationFilter) {
 		this.authenticationEntryPoint = authenticationEntryPoint;
+		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
 	}
 
 	@Bean
@@ -45,9 +44,9 @@ public class SecurityConfiguration {
 				.exceptionHandling(exceptionHandling -> exceptionHandling.authenticationEntryPoint(authenticationEntryPoint))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(SecurityConstants.PUBLIC_ENDPOINTS).permitAll()
-						// TODO: tighten to .anyRequest().authenticated() once JWT auth is in place
-						.anyRequest().permitAll()
-				);
+						.anyRequest().authenticated()
+				)
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}

@@ -1,0 +1,420 @@
+diff --git a/backend/src/main/java/com/deutschlingodeck/authentication/entity/RefreshToken.java b/backend/src/main/java/com/deutschlingodeck/authentication/entity/RefreshToken.java
+new file mode 100644
+index 0000000..fb5100e
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/authentication/entity/RefreshToken.java
+@@ -0,0 +1,84 @@
++package com.deutschlingodeck.authentication.entity;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++import java.time.OffsetDateTime;
++import java.util.UUID;
++
++/**
++ * Persisted record of an issued refresh token, identified by the {@code jti}
++ * ("token ID") claim embedded in the corresponding JWT. The raw JWT itself is
++ * never stored - only this correlation row, so a refresh token can be
++ * revoked (logout, rotation) without keeping the signed token around.
++ */
++@Entity
++@Table(name = "refresh_tokens")
++public class RefreshToken {
++
++	@Id
++	@GeneratedValue(strategy = GenerationType.IDENTITY)
++	private Long id;
++
++	@Column(name = "token_id", nullable = false, unique = true)
++	private UUID tokenId;
++
++	@Column(name = "user_id", nullable = false)
++	private Long userId;
++
++	@Column(name = "expires_at", nullable = false)
++	private OffsetDateTime expiresAt;
++
++	@Column(nullable = false)
++	private boolean revoked;
++
++	@Column(name = "created_at", nullable = false)
++	private OffsetDateTime createdAt;
++
++	protected RefreshToken() {
++	}
++
++	public RefreshToken(UUID tokenId, Long userId, OffsetDateTime expiresAt) {
++		this.tokenId = tokenId;
++		this.userId = userId;
++		this.expiresAt = expiresAt;
++		this.revoked = false;
++		this.createdAt = OffsetDateTime.now();
++	}
++
++	public Long getId() {
++		return id;
++	}
++
++	public UUID getTokenId() {
++		return tokenId;
++	}
++
++	public Long getUserId() {
++		return userId;
++	}
++
++	public OffsetDateTime getExpiresAt() {
++		return expiresAt;
++	}
++
++	public boolean isRevoked() {
++		return revoked;
++	}
++
++	public void setRevoked(boolean revoked) {
++		this.revoked = revoked;
++	}
++
++	public OffsetDateTime getCreatedAt() {
++		return createdAt;
++	}
++
++	public boolean isValid() {
++		return !revoked && expiresAt.isAfter(OffsetDateTime.now());
++	}
++}
+diff --git a/backend/src/main/java/com/deutschlingodeck/authentication/exception/EmailAlreadyExistsException.java b/backend/src/main/java/com/deutschlingodeck/authentication/exception/EmailAlreadyExistsException.java
+new file mode 100644
+index 0000000..b7e2794
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/authentication/exception/EmailAlreadyExistsException.java
+@@ -0,0 +1,11 @@
++package com.deutschlingodeck.authentication.exception;
++
++import com.deutschlingodeck.common.exception.ConflictException;
++
++/** Signals that a registration attempt used an email that is already taken. */
++public class EmailAlreadyExistsException extends ConflictException {
++
++	public EmailAlreadyExistsException(String email) {
++		super("Email '" + email + "' is already registered");
++	}
++}
+diff --git a/backend/src/main/java/com/deutschlingodeck/authentication/exception/InvalidCredentialsException.java b/backend/src/main/java/com/deutschlingodeck/authentication/exception/InvalidCredentialsException.java
+new file mode 100644
+index 0000000..7f75515
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/authentication/exception/InvalidCredentialsException.java
+@@ -0,0 +1,15 @@
++package com.deutschlingodeck.authentication.exception;
++
++import com.deutschlingodeck.common.exception.UnauthorizedException;
++
++/**
++ * Signals that a login attempt used an unknown email or a wrong password.
++ * Deliberately carries the same message regardless of which of the two was
++ * wrong, so responses do not reveal whether an email is registered.
++ */
++public class InvalidCredentialsException extends UnauthorizedException {
++
++	public InvalidCredentialsException() {
++		super("Invalid email or password");
++	}
++}
+diff --git a/backend/src/main/java/com/deutschlingodeck/authentication/exception/InvalidRefreshTokenException.java b/backend/src/main/java/com/deutschlingodeck/authentication/exception/InvalidRefreshTokenException.java
+new file mode 100644
+index 0000000..15bfef5
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/authentication/exception/InvalidRefreshTokenException.java
+@@ -0,0 +1,14 @@
++package com.deutschlingodeck.authentication.exception;
++
++import com.deutschlingodeck.common.exception.UnauthorizedException;
++
++/**
++ * Signals that a refresh token is malformed, expired, or has already been
++ * revoked (via logout or a prior refresh, since refresh tokens rotate).
++ */
++public class InvalidRefreshTokenException extends UnauthorizedException {
++
++	public InvalidRefreshTokenException() {
++		super("Invalid or expired refresh token");
++	}
++}
+diff --git a/backend/src/main/java/com/deutschlingodeck/authentication/repository/RefreshTokenRepository.java b/backend/src/main/java/com/deutschlingodeck/authentication/repository/RefreshTokenRepository.java
+new file mode 100644
+index 0000000..60c875e
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/authentication/repository/RefreshTokenRepository.java
+@@ -0,0 +1,19 @@
++package com.deutschlingodeck.authentication.repository;
++
++import com.deutschlingodeck.authentication.entity.RefreshToken;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++
++import java.util.Optional;
++import java.util.UUID;
++
++public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
++
++	Optional<RefreshToken> findByTokenId(UUID tokenId);
++
++	@Modifying
++	@Query("update RefreshToken t set t.revoked = true where t.userId = :userId and t.revoked = false")
++	void revokeAllActiveForUser(@Param("userId") Long userId);
++}
+diff --git a/backend/src/main/java/com/deutschlingodeck/security/JwtAuthenticationFilter.java b/backend/src/main/java/com/deutschlingodeck/security/JwtAuthenticationFilter.java
+new file mode 100644
+index 0000000..c793391
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/security/JwtAuthenticationFilter.java
+@@ -0,0 +1,63 @@
++package com.deutschlingodeck.security;
++
++import io.jsonwebtoken.Claims;
++import io.jsonwebtoken.JwtException;
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import org.springframework.http.HttpHeaders;
++import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
++import org.springframework.security.core.context.SecurityContextHolder;
++import org.springframework.stereotype.Component;
++import org.springframework.web.filter.OncePerRequestFilter;
++
++import java.io.IOException;
++import java.util.List;
++
++/**
++ * Populates the {@link SecurityContextHolder} from a {@code Bearer} access
++ * token, if present and valid. Never rejects the request itself - an
++ * absent/invalid token simply leaves the context unauthenticated, so public
++ * endpoints keep working and Spring Security's own authorization check
++ * (and {@link RestAuthenticationEntryPoint}) handles the 401 for protected ones.
++ *
++ * <p>The authenticated principal is just the user's id ({@link Long}); services
++ * that need the full user re-read it from the database, which keeps
++ * {@code displayName}/{@code email} in the response always current instead of
++ * potentially stale for the lifetime of the access token.
++ */
++@Component
++public class JwtAuthenticationFilter extends OncePerRequestFilter {
++
++	private static final String BEARER_PREFIX = "Bearer ";
++
++	private final JwtTokenProvider jwtTokenProvider;
++
++	public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
++		this.jwtTokenProvider = jwtTokenProvider;
++	}
++
++	@Override
++	protected void doFilterInternal(
++			HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
++			throws ServletException, IOException {
++		String header = request.getHeader(HttpHeaders.AUTHORIZATION);
++
++		if (header != null && header.startsWith(BEARER_PREFIX)) {
++			String token = header.substring(BEARER_PREFIX.length());
++			try {
++				Claims claims = jwtTokenProvider.parseToken(token).getPayload();
++				if (jwtTokenProvider.isAccessToken(claims)) {
++					Long userId = Long.valueOf(claims.getSubject());
++					var authentication = new UsernamePasswordAuthenticationToken(userId, null, List.of());
++					SecurityContextHolder.getContext().setAuthentication(authentication);
++				}
++			} catch (JwtException | IllegalArgumentException ex) {
++				SecurityContextHolder.clearContext();
++			}
++		}
++
++		filterChain.doFilter(request, response);
++	}
++}
+diff --git a/backend/src/main/java/com/deutschlingodeck/security/JwtProperties.java b/backend/src/main/java/com/deutschlingodeck/security/JwtProperties.java
+new file mode 100644
+index 0000000..6f488aa
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/security/JwtProperties.java
+@@ -0,0 +1,10 @@
++package com.deutschlingodeck.security;
++
++import org.springframework.boot.context.properties.ConfigurationProperties;
++
++import java.time.Duration;
++
++/** Binds the {@code security.jwt.*} keys in application.yaml. */
++@ConfigurationProperties(prefix = "security.jwt")
++public record JwtProperties(String secret, Duration accessTokenTtl, Duration refreshTokenTtl) {
++}
+diff --git a/backend/src/main/java/com/deutschlingodeck/security/JwtTokenProvider.java b/backend/src/main/java/com/deutschlingodeck/security/JwtTokenProvider.java
+new file mode 100644
+index 0000000..7526a8a
+--- /dev/null
++++ b/backend/src/main/java/com/deutschlingodeck/security/JwtTokenProvider.java
+@@ -0,0 +1,85 @@
++package com.deutschlingodeck.security;
++
++import com.deutschlingodeck.authentication.entity.User;
++import io.jsonwebtoken.Claims;
++import io.jsonwebtoken.Jws;
++import io.jsonwebtoken.Jwts;
++import io.jsonwebtoken.security.Keys;
++import org.springframework.stereotype.Component;
++
++import javax.crypto.SecretKey;
++import java.nio.charset.StandardCharsets;
++import java.time.Duration;
++import java.time.Instant;
++import java.util.Date;
++import java.util.UUID;
++
++/**
++ * Issues and validates the two JWT types used by the API:
++ * <ul>
++ *   <li>access tokens - short-lived, sent as {@code Authorization: Bearer},
++ *       carry the user id/email/displayName as claims;</li>
++ *   <li>refresh tokens - longer-lived, carry only a {@code jti} ("token ID")
++ *       that correlates to a {@link com.deutschlingodeck.authentication.entity.RefreshToken}
++ *       row, so a token can be revoked without keeping the JWT itself.</li>
++ * </ul>
++ * Both are signed HS256 with the same secret; the {@code type} claim keeps
++ * one from being used in place of the other.
++ */
++@Component
++public class JwtTokenProvider {
++
++	private static final String CLAIM_TYPE = "type";
++	private static final String TYPE_ACCESS = "access";
++	private static final String TYPE_REFRESH = "refresh";
++
++	private final SecretKey key;
++	private final JwtProperties properties;
++
++	public JwtTokenProvider(JwtProperties properties) {
++		this.properties = properties;
++		this.key = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
++	}
++
++	public String generateAccessToken(User user) {
++		Instant now = Instant.now();
++		return Jwts.builder()
++				.subject(user.getId().toString())
++				.claim("email", user.getEmail())
++				.claim("displayName", user.getDisplayName())
++				.claim(CLAIM_TYPE, TYPE_ACCESS)
++				.issuedAt(Date.from(now))
++				.expiration(Date.from(now.plus(properties.accessTokenTtl())))
++				.signWith(key)
++				.compact();
++	}
++
++	public String generateRefreshToken(User user, UUID tokenId) {
++		Instant now = Instant.now();
++		return Jwts.builder()
++				.id(tokenId.toString())
++				.subject(user.getId().toString())
++				.claim(CLAIM_TYPE, TYPE_REFRESH)
++				.issuedAt(Date.from(now))
++				.expiration(Date.from(now.plus(properties.refreshTokenTtl())))
++				.signWith(key)
++				.compact();
++	}
++
++	/** @throws io.jsonwebtoken.JwtException if the token is malformed, expired, or has an invalid signature. */
++	public Jws<Claims> parseToken(String token) {
++		return Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
++	}
++
++	public boolean isAccessToken(Claims claims) {
++		return TYPE_ACCESS.equals(claims.get(CLAIM_TYPE, String.class));
++	}
++
++	public boolean isRefreshToken(Claims claims) {
++		return TYPE_REFRESH.equals(claims.get(CLAIM_TYPE, String.class));
++	}
++
++	public Duration getRefreshTokenTtl() {
++		return properties.refreshTokenTtl();
++	}
++}
+diff --git a/backend/src/main/resources/db/migration/V1__create_users_table.sql b/backend/src/main/resources/db/migration/V1__create_users_table.sql
+new file mode 100644
+index 0000000..6b77bc9
+--- /dev/null
++++ b/backend/src/main/resources/db/migration/V1__create_users_table.sql
+@@ -0,0 +1,8 @@
++CREATE TABLE users (
++    id BIGSERIAL PRIMARY KEY,
++    email VARCHAR(255) NOT NULL UNIQUE,
++    password_hash VARCHAR(255) NOT NULL,
++    display_name VARCHAR(100) NOT NULL,
++    created_at TIMESTAMPTZ NOT NULL,
++    updated_at TIMESTAMPTZ
++);
+diff --git a/backend/src/main/resources/db/migration/V2__create_refresh_tokens_table.sql b/backend/src/main/resources/db/migration/V2__create_refresh_tokens_table.sql
+new file mode 100644
+index 0000000..26d4187
+--- /dev/null
++++ b/backend/src/main/resources/db/migration/V2__create_refresh_tokens_table.sql
+@@ -0,0 +1,10 @@
++CREATE TABLE refresh_tokens (
++    id BIGSERIAL PRIMARY KEY,
++    token_id UUID NOT NULL UNIQUE,
++    user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
++    expires_at TIMESTAMPTZ NOT NULL,
++    revoked BOOLEAN NOT NULL DEFAULT FALSE,
++    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+diff --git a/docs/Auth Review.txt b/docs/Auth Review.txt
+new file mode 100644
+index 0000000..9d62f8f
+--- /dev/null
++++ b/docs/Auth Review.txt	
+@@ -0,0 +1,35 @@
++AuthenticationServiceImpl is fully implemented and verified live against Postgres via docker-compose (register → login → me → refresh → logout, plus the 401/409 error paths). Here's what's happening and why:
++
++The gap that had to be filled first
++None of this existed: no JWT library dependency, no token provider, no users/refresh_tokens tables (Flyway migrations dir was empty, ddl-auto: none), and the security filter chain was permitAll() everywhere. Implementing the service meant building the whole stack under it.
++
++What was added
++
++┌───────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
++│                                       Piece                                       │                                                          Purpose                                                          │
++├───────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
++│ V1__create_users_table.sql, V2__create_refresh_tokens_table.sql                   │ Flyway migrations — users table plus a refresh_tokens correlation table                                                   │
++├───────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
++│ RefreshToken entity + repository                                                  │ Tracks issued refresh tokens by jti (token ID), with revoked/expiresAt, so they can be invalidated without keeping the    │
++│                                                                                   │ raw JWT                                                                                                                   │
++├───────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
++│ JwtProperties, JwtTokenProvider                                                   │ Signs/parses HS256 JWTs; access tokens embed user id/email/displayName, refresh tokens embed only a jti                   │
++├───────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
++│ JwtAuthenticationFilter                                                           │ Reads Authorization: Bearer, sets the user id as principal in SecurityContextHolder — never rejects, so public endpoints  │
++│                                                                                   │ still work                                                                                                                │
++├───────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
++│ SecurityConfiguration                                                             │ Wired the filter in, flipped anyRequest().permitAll() → .authenticated() (this was literally the file's own TODO)         │
++├───────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
++│ InvalidCredentialsException, InvalidRefreshTokenException,                        │ Thin subclasses of the existing UnauthorizedException/ConflictException — GlobalExceptionHandler already maps those to    │
++│ EmailAlreadyExistsException                                                       │ 401/409                                                                                                                   │
++└───────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
++
++Design decisions worth flagging
++- Refresh tokens rotate: every refresh() call revokes the presented token and issues a new one. Reusing an old one → 401. Verified in the smoke test.
++- Login/refresh use one generic message ("Invalid email or password" / "Invalid or expired refresh token") regardless of why it failed, to avoid leaking whether an email is registered.
++- getCurrentUser()/logout() re-read the user from SecurityContextHolder's principal (just the user id), not from JWT claims directly — keeps /me responses accurate even if a display name changes mid-token-lifetime.
++- logout() revokes all active refresh tokens for the user, not one specific token — the OpenAPI /auth/logout request has no body, so there's no way to identify a single session/token.
++- Access tokens are not revocable (stateless by design) — logging out doesn't kill an already-issued access token before its 15-min TTL expires. This is standard for short-lived access tokens; only the refresh token (the thing that grants long-term renewal) is tracked and revoked.
++- This flips security for every other controller too (dictionaries/games/statistics/profile), since they were all permitAll() before. That's intentional and matches the OpenAPI spec's global bearerAuth requirement — but it means the frontend's dev-mode bypass (fake login, no real JWT) will now get real 401s from those endpoints instead of whatever they returned before. The frontend's sample-data fallback already handles that gracefully.
++
++One thing to flag: the JWT secret has a dev-only default in application.yaml (JWT_SECRET env var overrides it) — fine for local/docker-compose, but must be set explicitly before any real deployment.

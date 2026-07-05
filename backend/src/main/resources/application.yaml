@@ -8,10 +8,18 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      # TODO: switch to "validate" once Flyway migrations exist for the
-      # User/Dictionary/Card/Game/GameAnswer entities (STEP 12 of the
-      # backend skeleton explicitly defers Flyway migrations).
+      # Flyway now owns the schema for the User/RefreshToken entities (see
+      # db/migration). Remaining entities are still created via this
+      # "none" setting until their own migrations are added.
       ddl-auto: none
+
+security:
+  jwt:
+    # Dev-only default so the app runs out of the box with docker-compose.
+    # Override via JWT_SECRET in any real deployment.
+    secret: ${JWT_SECRET:dev-only-secret-key-change-me-in-production-32bytes-min}
+    access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
+    refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P7D}
 
 springdoc:
   api-docs:
