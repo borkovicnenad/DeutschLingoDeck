@@ -1,3 +1,13 @@
+@if (dictionary(); as breadcrumbDictionary) {
+  <app-breadcrumbs
+    [items]="[
+      { label: 'Dashboard', link: ['/dashboard'] },
+      { label: 'Dictionaries', link: ['/dictionaries'] },
+      { label: breadcrumbDictionary.name },
+    ]"
+  />
+}
+
 @if (error()) {
   <app-inline-alert
     tone="warning"
@@ -73,6 +83,41 @@
     </div>
   }
 
+  @if (recommendationsLoading() || recommendationsError() || recommendations().length > 0) {
+    <mat-card appearance="outlined" class="dictionary-details__ai-card">
+      <mat-card-header>
+        <mat-card-title>
+          <mat-icon>auto_awesome</mat-icon>
+          AI Recommendations
+        </mat-card-title>
+        <mat-card-subtitle>Cards the assistant suggests reviewing next.</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        @if (recommendationsLoading()) {
+          <mat-progress-bar mode="indeterminate" />
+        } @else if (recommendationsError()) {
+          <app-inline-alert
+            tone="warning"
+            [message]="recommendationsError()!"
+            [retryable]="true"
+            (retry)="loadRecommendations()"
+          />
+        } @else {
+          <ul class="dictionary-details__recommendations">
+            @for (recommendation of recommendations(); track recommendation.cardId) {
+              <li>
+                <a [routerLink]="['/dictionaries', dictionaryId(), 'cards', recommendation.cardId]">
+                  {{ recommendation.sourceText }}
+                </a>
+                <span class="dictionary-details__recommendation-reason">{{ recommendation.reason }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </mat-card-content>
+    </mat-card>
+  }
+
   <h2 class="dictionary-details__section-title">Cards</h2>
 
   @if (cardsLoading()) {
@@ -99,7 +144,9 @@
 
       <ng-container matColumnDef="cardType">
         <th mat-header-cell *matHeaderCellDef>Type</th>
-        <td mat-cell *matCellDef="let card">{{ card.cardType }}</td>
+        <td mat-cell *matCellDef="let card">
+          <app-badge [variant]="cardTypeBadgeVariant(card.cardType)">{{ card.cardType }}</app-badge>
+        </td>
       </ng-container>
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>

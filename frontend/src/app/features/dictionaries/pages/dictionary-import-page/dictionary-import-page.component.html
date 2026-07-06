@@ -1,6 +1,10 @@
+<app-breadcrumbs
+  [items]="[{ label: 'Dashboard', link: ['/dashboard'] }, { label: 'Dictionaries', link: ['/dictionaries'] }, { label: 'Import' }]"
+/>
+
 <app-page-header
   title="Import Dictionary"
-  subtitle="Upload a vocabulary dictionary from an Excel file."
+  subtitle="Upload a vocabulary dictionary from an Excel file, or generate one with AI."
 />
 
 @if (importResult(); as result) {
@@ -31,60 +35,164 @@
     </mat-card-actions>
   </mat-card>
 } @else {
-  <mat-card appearance="outlined" class="import-form-card">
-    <mat-card-content>
-      <form [formGroup]="form" (ngSubmit)="submit()" class="import-form">
-        <label class="import-form__file">
-          <input type="file" accept=".xlsx,.xls" (change)="onFileSelected($event)" hidden #fileInput />
-          <button matButton="outlined" type="button" (click)="fileInput.click()">
-            <mat-icon>upload_file</mat-icon>
-            Select Excel File
-          </button>
-          @if (selectedFile(); as file) {
-            <span class="import-form__file-name">{{ file.name }}</span>
+  <mat-tab-group class="import-tabs">
+    <mat-tab label="Upload Excel File">
+      <mat-card appearance="outlined" class="import-form-card">
+        <mat-card-content>
+          <form [formGroup]="form" (ngSubmit)="submit()" class="import-form">
+            <label class="import-form__file">
+              <input type="file" accept=".xlsx,.xls" (change)="onFileSelected($event)" hidden #fileInput />
+              <button matButton="outlined" type="button" (click)="fileInput.click()">
+                <mat-icon>upload_file</mat-icon>
+                Select Excel File
+              </button>
+              @if (selectedFile(); as file) {
+                <span class="import-form__file-name">{{ file.name }}</span>
+              }
+            </label>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Dictionary name</mat-label>
+              <input matInput formControlName="name" />
+              @if (form.controls.name.hasError('required')) {
+                <mat-error>Name is required.</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Description</mat-label>
+              <textarea matInput formControlName="description" rows="3"></textarea>
+            </mat-form-field>
+
+            <div class="import-form__languages">
+              <mat-form-field appearance="outline">
+                <mat-label>Source language</mat-label>
+                <input matInput formControlName="sourceLanguage" placeholder="hr" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Target language</mat-label>
+                <input matInput formControlName="targetLanguage" placeholder="de" />
+              </mat-form-field>
+            </div>
+
+            @if (submitError()) {
+              <app-error-state
+                [message]="submitError()!.message"
+                [retryable]="false"
+              />
+            }
+
+            @if (uploading()) {
+              <app-loading-spinner label="Uploading and validating dictionary..." />
+            } @else {
+              <button matButton="filled" type="submit" [disabled]="!selectedFile()">
+                Import Dictionary
+              </button>
+            }
+          </form>
+        </mat-card-content>
+      </mat-card>
+    </mat-tab>
+
+    <mat-tab label="Generate with AI">
+      <mat-card appearance="outlined" class="import-form-card">
+        <mat-card-content>
+          @if (aiAdded()) {
+            <div class="ai-import__success">
+              <mat-icon>check_circle</mat-icon>
+              <p>{{ aiGeneratedCards()?.length }} AI-suggested cards were added to "{{ aiForm.value.name }}".</p>
+              <a matButton="filled" routerLink="/dictionaries">Go to Dictionaries</a>
+              <button matButton type="button" (click)="resetAiGeneration()">Generate Another</button>
+            </div>
+          } @else {
+            <form [formGroup]="aiForm" (ngSubmit)="generateWithAi()" class="import-form">
+              <p class="ai-import__hint">
+                <mat-icon>auto_awesome</mat-icon>
+                Describe a topic and the AI assistant will suggest vocabulary cards for you to review.
+              </p>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Dictionary name</mat-label>
+                <input matInput formControlName="name" placeholder="e.g. Medical German" />
+                @if (aiForm.controls.name.hasError('required')) {
+                  <mat-error>Name is required.</mat-error>
+                }
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Topic</mat-label>
+                <input matInput formControlName="topic" placeholder="e.g. travel, business, food" />
+                @if (aiForm.controls.topic.hasError('required')) {
+                  <mat-error>Topic is required.</mat-error>
+                }
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Level</mat-label>
+                <mat-select formControlName="level">
+                  <mat-option value="A1">A1 — Beginner</mat-option>
+                  <mat-option value="A2">A2 — Elementary</mat-option>
+                  <mat-option value="B1">B1 — Intermediate</mat-option>
+                  <mat-option value="B2">B2 — Upper Intermediate</mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              @if (aiError()) {
+                <app-error-state [message]="aiError()!" [retryable]="true" (retry)="generateWithAi()" />
+              }
+
+              @if (aiGenerating()) {
+                <app-loading-spinner label="Generating vocabulary suggestions..." />
+              } @else {
+                <button matButton="filled" type="submit">
+                  <mat-icon>auto_awesome</mat-icon>
+                  Generate Vocabulary
+                </button>
+              }
+            </form>
+
+            @if (aiGeneratedCards(); as cards) {
+              <h3 class="ai-import__preview-title">Suggested Cards</h3>
+              <table mat-table [dataSource]="cards" class="ai-import__table">
+                <ng-container matColumnDef="sourceText">
+                  <th mat-header-cell *matHeaderCellDef>Word</th>
+                  <td mat-cell *matCellDef="let card">{{ card.sourceText }}</td>
+                </ng-container>
+                <ng-container matColumnDef="primaryTranslation">
+                  <th mat-header-cell *matHeaderCellDef>Translation</th>
+                  <td mat-cell *matCellDef="let card">{{ card.primaryTranslation }}</td>
+                </ng-container>
+                <ng-container matColumnDef="cardType">
+                  <th mat-header-cell *matHeaderCellDef>Type</th>
+                  <td mat-cell *matCellDef="let card">
+                    <app-badge variant="neutral">{{ card.cardType }}</app-badge>
+                  </td>
+                </ng-container>
+                <ng-container matColumnDef="estimatedDifficulty">
+                  <th mat-header-cell *matHeaderCellDef>Difficulty</th>
+                  <td mat-cell *matCellDef="let card">{{ card.estimatedDifficulty }} / 5</td>
+                </ng-container>
+                <ng-container matColumnDef="confidence">
+                  <th mat-header-cell *matHeaderCellDef>AI Confidence</th>
+                  <td mat-cell *matCellDef="let card">
+                    <app-badge variant="info">{{ (card.confidence * 100).toFixed(0) }}%</app-badge>
+                  </td>
+                </ng-container>
+                <tr mat-header-row *matHeaderRowDef="aiGeneratedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: aiGeneratedColumns"></tr>
+              </table>
+
+              <div class="ai-import__actions">
+                <button matButton="filled" type="button" [disabled]="aiForm.controls.name.invalid" (click)="addGeneratedToDictionary()">
+                  Add to Dictionary
+                </button>
+                <button matButton type="button" (click)="resetAiGeneration()">Discard</button>
+              </div>
+            }
           }
-        </label>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Dictionary name</mat-label>
-          <input matInput formControlName="name" />
-          @if (form.controls.name.hasError('required')) {
-            <mat-error>Name is required.</mat-error>
-          }
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Description</mat-label>
-          <textarea matInput formControlName="description" rows="3"></textarea>
-        </mat-form-field>
-
-        <div class="import-form__languages">
-          <mat-form-field appearance="outline">
-            <mat-label>Source language</mat-label>
-            <input matInput formControlName="sourceLanguage" placeholder="hr" />
-          </mat-form-field>
-
-          <mat-form-field appearance="outline">
-            <mat-label>Target language</mat-label>
-            <input matInput formControlName="targetLanguage" placeholder="de" />
-          </mat-form-field>
-        </div>
-
-        @if (submitError()) {
-          <app-error-state
-            [message]="submitError()!.message"
-            [retryable]="false"
-          />
-        }
-
-        @if (uploading()) {
-          <app-loading-spinner label="Uploading and validating dictionary..." />
-        } @else {
-          <button matButton="filled" type="submit" [disabled]="!selectedFile()">
-            Import Dictionary
-          </button>
-        }
-      </form>
-    </mat-card-content>
-  </mat-card>
+        </mat-card-content>
+      </mat-card>
+    </mat-tab>
+  </mat-tab-group>
 }

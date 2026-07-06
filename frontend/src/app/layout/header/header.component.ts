@@ -6,10 +6,11 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
+import { AvatarComponent } from '../../shared/components/avatar/avatar.component';
 
 @Component({
   selector: 'app-header',
-  imports: [MatToolbarModule, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [MatToolbarModule, MatButtonModule, MatIconModule, MatMenuModule, RouterLink, AvatarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <mat-toolbar color="primary" class="header">
@@ -29,7 +30,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
       @if (authService.currentUser(); as user) {
         <button matButton [matMenuTriggerFor]="userMenu" type="button" class="header__user">
-          <mat-icon>account_circle</mat-icon>
+          <app-avatar [name]="user.displayName" [size]="28" />
           {{ user.displayName }}
         </button>
         <mat-menu #userMenu="matMenu">

@@ -39,3 +39,34 @@
 .dictionary-details__progress {
   margin-bottom: 1rem;
 }
+
+.dictionary-details__ai-card {
+  margin: 1.5rem 0;
+}
+
+.dictionary-details__ai-card mat-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dictionary-details__recommendations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.dictionary-details__recommendations li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dictionary-details__recommendation-reason {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.8125rem;
+}

@@ -4,8 +4,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink } from '@angular/router';
@@ -26,9 +28,11 @@ import { DictionaryListStateService } from '../../state/dictionary-list-state.se
     MatIconModule,
     MatFormFieldModule,
     MatInputModule,
+    MatMenuModule,
     MatTableModule,
     MatPaginatorModule,
     MatProgressBarModule,
+    MatSortModule,
     MatTooltipModule,
     PageHeaderComponent,
     EmptyStateComponent,
@@ -59,6 +63,10 @@ export class DictionaryListPageComponent implements OnInit {
 
   protected onSearch(event: Event): void {
     this.state.setSearchTerm((event.target as HTMLInputElement).value);
+  }
+
+  protected onSort(sort: Sort): void {
+    this.state.setSort(sort);
   }
 
   protected onPage(event: PageEvent): void {

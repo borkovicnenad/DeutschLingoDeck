@@ -1,3 +1,7 @@
+<app-breadcrumbs
+  [items]="[{ label: 'Dashboard', link: ['/dashboard'] }, { label: 'Games', link: ['/games'] }, { label: 'Summary' }]"
+/>
+
 @if (error()) {
   <app-inline-alert
     tone="warning"

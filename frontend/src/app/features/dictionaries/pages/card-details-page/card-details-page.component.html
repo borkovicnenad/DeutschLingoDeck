@@ -1,3 +1,12 @@
+<app-breadcrumbs
+  [items]="[
+    { label: 'Dashboard', link: ['/dashboard'] },
+    { label: 'Dictionaries', link: ['/dictionaries'] },
+    { label: 'Dictionary', link: ['/dictionaries', dictionaryId()] },
+    { label: card()?.sourceText ?? 'Card' },
+  ]"
+/>
+
 @if (error()) {
   <app-inline-alert
     tone="warning"
@@ -27,7 +36,7 @@
 
   <dl class="card-details">
     <dt>Card type</dt>
-    <dd>{{ card.cardType }}</dd>
+    <dd><app-badge [variant]="cardTypeBadgeVariant(card.cardType)">{{ card.cardType }}</app-badge></dd>
 
     <dt>Primary translation</dt>
     <dd>{{ card.primaryTranslation }}</dd>
@@ -55,7 +64,11 @@
 
     @if (card.difficultyLevel !== null && card.difficultyLevel !== undefined) {
       <dt>Difficulty</dt>
-      <dd>{{ card.difficultyLevel }}</dd>
+      <dd>
+        <app-badge [variant]="difficultyBadgeVariant(card.difficultyLevel)">
+          {{ card.difficultyLevel }} / 5
+        </app-badge>
+      </dd>
     }
   </dl>
 }

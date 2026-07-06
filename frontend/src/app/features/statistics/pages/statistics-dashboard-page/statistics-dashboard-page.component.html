@@ -60,6 +60,42 @@
   }
 </section>
 
+<section class="statistics__section statistics__charts">
+  <mat-card appearance="outlined" class="statistics__chart-card">
+    <mat-card-header>
+      <mat-card-title>Weekly Activity</mat-card-title>
+      <mat-card-subtitle>Cards reviewed per day, last 7 days</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <app-chart-bar [data]="weeklyActivityChartData()" ariaLabel="Weekly activity" />
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card appearance="outlined" class="statistics__chart-card">
+    <mat-card-header>
+      <mat-card-title>Accuracy Trend</mat-card-title>
+      <mat-card-subtitle>Accuracy per game session</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      @if (accuracyTrendChartData().length > 0) {
+        <app-chart-line [data]="accuracyTrendChartData()" ariaLabel="Accuracy trend" />
+      } @else {
+        <app-empty-state icon="show_chart" title="Not enough history yet" />
+      }
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card appearance="outlined" class="statistics__chart-card">
+    <mat-card-header>
+      <mat-card-title>Mastery Breakdown</mat-card-title>
+      <mat-card-subtitle>Mastered vs. difficult cards</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <app-chart-donut [segments]="masterySegments()" ariaLabel="Mastery breakdown" />
+    </mat-card-content>
+  </mat-card>
+</section>
+
 <section class="statistics__section">
   <h2>Dictionary Statistics</h2>
   @if (dictionaryStatisticsError()) {
@@ -80,27 +116,35 @@
   @if (dictionaryStatistics().length === 0) {
     <app-empty-state icon="menu_book" title="No dictionary statistics yet" />
   } @else {
-    <table mat-table [dataSource]="dictionaryStatistics()" class="statistics__table">
+    <table
+      mat-table
+      matSort
+      [matSortActive]="dictionarySort().active"
+      [matSortDirection]="dictionarySort().direction"
+      (matSortChange)="onDictionarySort($event)"
+      [dataSource]="sortedDictionaryStatistics()"
+      class="statistics__table"
+    >
       <ng-container matColumnDef="dictionaryName">
-        <th mat-header-cell *matHeaderCellDef>Dictionary</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Dictionary</th>
         <td mat-cell *matCellDef="let stat">{{ stat.dictionaryName }}</td>
       </ng-container>
       <ng-container matColumnDef="completedGames">
-        <th mat-header-cell *matHeaderCellDef>Completed Games</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Completed Games</th>
         <td mat-cell *matCellDef="let stat">{{ stat.completedGames }}</td>
       </ng-container>
       <ng-container matColumnDef="averageAccuracy">
-        <th mat-header-cell *matHeaderCellDef>Avg. Accuracy</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Avg. Accuracy</th>
         <td mat-cell *matCellDef="let stat">
           {{ stat.averageAccuracy !== undefined ? (stat.averageAccuracy * 100).toFixed(0) + '%' : '—' }}
         </td>
       </ng-container>
       <ng-container matColumnDef="masteredCards">
-        <th mat-header-cell *matHeaderCellDef>Mastered</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Mastered</th>
         <td mat-cell *matCellDef="let stat">{{ stat.masteredCards }}</td>
       </ng-container>
       <ng-container matColumnDef="difficultCards">
-        <th mat-header-cell *matHeaderCellDef>Difficult</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Difficult</th>
         <td mat-cell *matCellDef="let stat">{{ stat.difficultCards }}</td>
       </ng-container>
       <tr mat-header-row *matHeaderRowDef="dictionaryColumns"></tr>
@@ -129,23 +173,31 @@
   @if (cardStatistics().length === 0) {
     <app-empty-state icon="style" title="No card statistics yet" />
   } @else {
-    <table mat-table [dataSource]="cardStatistics()" class="statistics__table">
+    <table
+      mat-table
+      matSort
+      [matSortActive]="cardSort().active"
+      [matSortDirection]="cardSort().direction"
+      (matSortChange)="onCardSort($event)"
+      [dataSource]="sortedCardStatistics()"
+      class="statistics__table"
+    >
       <ng-container matColumnDef="sourceText">
-        <th mat-header-cell *matHeaderCellDef>Card</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Card</th>
         <td mat-cell *matCellDef="let stat">{{ stat.sourceText }}</td>
       </ng-container>
       <ng-container matColumnDef="timesShown">
-        <th mat-header-cell *matHeaderCellDef>Times Shown</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Times Shown</th>
         <td mat-cell *matCellDef="let stat">{{ stat.timesShown }}</td>
       </ng-container>
       <ng-container matColumnDef="successRate">
-        <th mat-header-cell *matHeaderCellDef>Success Rate</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Success Rate</th>
         <td mat-cell *matCellDef="let stat">
           {{ stat.successRate !== undefined ? (stat.successRate * 100).toFixed(0) + '%' : '—' }}
         </td>
       </ng-container>
       <ng-container matColumnDef="lastShownAt">
-        <th mat-header-cell *matHeaderCellDef>Last Shown</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Last Shown</th>
         <td mat-cell *matCellDef="let stat">
           {{ stat.lastShownAt ? (stat.lastShownAt | date: 'short') : '—' }}
         </td>
@@ -176,23 +228,31 @@
   @if (learningHistory().length === 0) {
     <app-empty-state icon="history" title="No learning history yet" />
   } @else {
-    <table mat-table [dataSource]="learningHistory()" class="statistics__table">
+    <table
+      mat-table
+      matSort
+      [matSortActive]="historySort().active"
+      [matSortDirection]="historySort().direction"
+      (matSortChange)="onHistorySort($event)"
+      [dataSource]="sortedLearningHistory()"
+      class="statistics__table"
+    >
       <ng-container matColumnDef="dictionaryName">
-        <th mat-header-cell *matHeaderCellDef>Dictionary</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Dictionary</th>
         <td mat-cell *matCellDef="let entry">{{ entry.dictionaryName }}</td>
       </ng-container>
       <ng-container matColumnDef="status">
-        <th mat-header-cell *matHeaderCellDef>Status</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
         <td mat-cell *matCellDef="let entry">{{ entry.status }}</td>
       </ng-container>
       <ng-container matColumnDef="accuracy">
-        <th mat-header-cell *matHeaderCellDef>Accuracy</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Accuracy</th>
         <td mat-cell *matCellDef="let entry">
           {{ entry.accuracy !== undefined ? (entry.accuracy * 100).toFixed(0) + '%' : '—' }}
         </td>
       </ng-container>
       <ng-container matColumnDef="startedAt">
-        <th mat-header-cell *matHeaderCellDef>Started</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Started</th>
         <td mat-cell *matCellDef="let entry">
           {{ entry.startedAt ? (entry.startedAt | date: 'short') : '—' }}
         </td>

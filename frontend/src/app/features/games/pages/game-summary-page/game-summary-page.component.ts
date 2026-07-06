@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Router, RouterLink } from '@angular/router';
 
+import { BreadcrumbsComponent } from '../../../../shared/components/breadcrumbs/breadcrumbs.component';
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
@@ -18,6 +19,7 @@ import { GameApiService } from '../../services/game-api.service';
     MatButtonModule,
     MatProgressBarModule,
     PageHeaderComponent,
+    BreadcrumbsComponent,
     InlineAlertComponent,
     StatCardComponent,
   ],
@@ -25,7 +27,7 @@ import { GameApiService } from '../../services/game-api.service';
   templateUrl: './game-summary-page.component.html',
   styleUrl: './game-summary-page.component.css',
 })
-export class GameSummaryPageComponent {
+export class GameSummaryPageComponent implements OnInit {
   private readonly gameApi = inject(GameApiService);
   private readonly router = inject(Router);
 
@@ -37,7 +39,7 @@ export class GameSummaryPageComponent {
   protected readonly error = signal<AppError | null>(null);
   protected readonly usingSampleData = signal(true);
 
-  constructor() {
+  ngOnInit(): void {
     this.load();
   }
 

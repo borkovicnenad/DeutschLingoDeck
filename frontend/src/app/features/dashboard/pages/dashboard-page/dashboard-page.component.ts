@@ -3,6 +3,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 
 import { AuthService } from '../../../../core/auth/auth.service';
@@ -13,6 +14,13 @@ import { StatCardComponent } from '../../../../shared/components/stat-card/stat-
 import { SAMPLE_DICTIONARIES } from '../../../dictionaries/dictionaries.sample-data';
 import { DictionarySummary } from '../../../dictionaries/models/dictionary.model';
 import { DictionaryApiService } from '../../../dictionaries/services/dictionary-api.service';
+import {
+  SAMPLE_ACHIEVEMENTS,
+  SAMPLE_DAILY_GOAL,
+  SAMPLE_LEVEL_PROGRESS,
+} from '../../../gamification/gamification.sample-data';
+import { Achievement, DailyGoal, LevelProgress } from '../../../gamification/models/gamification.model';
+import { GamificationService } from '../../../gamification/services/gamification.service';
 import { SAMPLE_ACTIVE_GAME } from '../../../games/games.sample-data';
 import { Game } from '../../../games/models/game.model';
 import { GameApiService } from '../../../games/services/game-api.service';
@@ -28,6 +36,7 @@ import { StatisticsApiService } from '../../../statistics/services/statistics-ap
     MatCardModule,
     MatIconModule,
     MatProgressBarModule,
+    MatTooltipModule,
     PageHeaderComponent,
     EmptyStateComponent,
     InlineAlertComponent,
@@ -42,6 +51,7 @@ export class DashboardPageComponent {
   private readonly statisticsApi = inject(StatisticsApiService);
   private readonly dictionaryApi = inject(DictionaryApiService);
   private readonly gameApi = inject(GameApiService);
+  private readonly gamificationApi = inject(GamificationService);
 
   protected readonly statistics = signal<DashboardStatistics | null>(SAMPLE_DASHBOARD_STATISTICS);
   protected readonly statisticsLoading = signal(true);
@@ -55,10 +65,16 @@ export class DashboardPageComponent {
 
   protected readonly activeGame = signal<Game | null>(SAMPLE_ACTIVE_GAME);
 
+  protected readonly levelProgress = signal<LevelProgress | null>(SAMPLE_LEVEL_PROGRESS);
+  protected readonly dailyGoal = signal<DailyGoal | null>(SAMPLE_DAILY_GOAL);
+  protected readonly achievements = signal<Achievement[]>(SAMPLE_ACHIEVEMENTS.slice(0, 5));
+  protected readonly gamificationLoading = signal(true);
+
   constructor() {
     this.loadStatistics();
     this.loadDictionaries();
     this.loadActiveGame();
+    this.loadGamification();
   }
 
   protected loadStatistics(): void {
@@ -101,5 +117,22 @@ export class DashboardPageComponent {
       // keep showing whichever active-game banner (sample or previous) was already displayed
       error: () => {},
     });
+  }
+
+  private loadGamification(): void {
+    this.gamificationApi.getLevelProgress().subscribe((progress) => this.levelProgress.set(progress));
+    this.gamificationApi.getDailyGoal().subscribe((goal) => this.dailyGoal.set(goal));
+    this.gamificationApi.getAchievements().subscribe((achievements) => {
+      this.achievements.set(achievements.slice(0, 5));
+      this.gamificationLoading.set(false);
+    });
+  }
+
+  protected xpPercentage(progress: LevelProgress): number {
+    return Math.min(100, (progress.currentXp / progress.xpToNextLevel) * 100);
+  }
+
+  protected goalPercentage(goal: DailyGoal): number {
+    return Math.min(100, (goal.completedCards / goal.targetCards) * 100);
   }
 }

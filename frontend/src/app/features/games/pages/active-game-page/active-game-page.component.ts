@@ -1,14 +1,16 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Router } from '@angular/router';
 import { map, timer } from 'rxjs';
 
+import { BreadcrumbsComponent } from '../../../../shared/components/breadcrumbs/breadcrumbs.component';
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
 import { GameApiService } from '../../services/game-api.service';
@@ -22,7 +24,9 @@ import { ActiveGameStateService } from '../../state/active-game-state.service';
     MatCardModule,
     MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
     MatProgressBarModule,
+    BreadcrumbsComponent,
     InlineAlertComponent,
   ],
   providers: [ActiveGameStateService],
@@ -30,7 +34,7 @@ import { ActiveGameStateService } from '../../state/active-game-state.service';
   templateUrl: './active-game-page.component.html',
   styleUrl: './active-game-page.component.css',
 })
-export class ActiveGamePageComponent {
+export class ActiveGamePageComponent implements OnInit {
   protected readonly state = inject(ActiveGameStateService);
   private readonly gameApi = inject(GameApiService);
   private readonly confirmDialog = inject(ConfirmDialogService);
@@ -51,7 +55,7 @@ export class ActiveGamePageComponent {
 
   protected readonly finishing = signal(false);
 
-  constructor() {
+  ngOnInit(): void {
     this.state.load(this.gameIdAsNumber());
   }
 

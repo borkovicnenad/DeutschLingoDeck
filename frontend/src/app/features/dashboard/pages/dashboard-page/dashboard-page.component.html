@@ -50,6 +50,55 @@
 </section>
 
 <section class="dashboard__section">
+  <h2>Your Progress</h2>
+  @if (gamificationLoading()) {
+    <mat-progress-bar mode="indeterminate" class="dashboard__progress" />
+  }
+  <div class="dashboard__progress-cards">
+    @if (levelProgress(); as level) {
+      <mat-card appearance="outlined" class="dashboard__level-card">
+        <mat-card-content class="dashboard__level-content">
+          <div class="dashboard__level-badge">{{ level.level }}</div>
+          <div class="dashboard__level-info">
+            <p class="dashboard__level-title">{{ level.title }}</p>
+            <mat-progress-bar mode="determinate" [value]="xpPercentage(level)" />
+            <p class="dashboard__level-xp">{{ level.currentXp }} / {{ level.xpToNextLevel }} XP</p>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    }
+
+    @if (dailyGoal(); as goal) {
+      <mat-card appearance="outlined" class="dashboard__goal-card">
+        <mat-card-content>
+          <p class="dashboard__goal-title">
+            <mat-icon>flag</mat-icon>
+            Daily Goal — {{ goal.completedCards }} / {{ goal.targetCards }} cards
+          </p>
+          <mat-progress-bar mode="determinate" [value]="goalPercentage(goal)" />
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+
+  @if (achievements().length > 0) {
+    <div class="dashboard__achievements">
+      @for (achievement of achievements(); track achievement.id) {
+        <div
+          class="dashboard__achievement"
+          [class.dashboard__achievement--locked]="!achievement.unlocked"
+          [matTooltip]="achievement.description"
+        >
+          <mat-icon>{{ achievement.unlocked ? achievement.icon : 'lock' }}</mat-icon>
+          <span>{{ achievement.title }}</span>
+        </div>
+      }
+    </div>
+    <a routerLink="/profile">View all achievements</a>
+  }
+</section>
+
+<section class="dashboard__section">
   <h2>Quick Actions</h2>
   <div class="dashboard__quick-actions">
     <a matButton="outlined" routerLink="/dictionaries/import">

@@ -21,11 +21,49 @@
   <div class="profile__grid">
     <mat-card appearance="outlined">
       <mat-card-header>
-        <mat-card-title>Profile Information</mat-card-title>
+        <app-avatar mat-card-avatar [name]="profile.displayName" [size]="48" />
+        <mat-card-title>{{ profile.displayName }}</mat-card-title>
+        <mat-card-subtitle>{{ profile.email }}</mat-card-subtitle>
       </mat-card-header>
       <mat-card-content>
-        <p><strong>Email:</strong> {{ profile.email }}</p>
         <p><strong>Member since:</strong> {{ profile.createdAt | date: 'longDate' }}</p>
+      </mat-card-content>
+    </mat-card>
+
+    @if (levelProgress(); as level) {
+      <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-card-title>Level {{ level.level }} — {{ level.title }}</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <mat-progress-bar mode="determinate" [value]="xpPercentage(level)" />
+          <p class="profile__xp">{{ level.currentXp }} / {{ level.xpToNextLevel }} XP</p>
+        </mat-card-content>
+      </mat-card>
+    }
+
+    <mat-card appearance="outlined" class="profile__achievements-card">
+      <mat-card-header>
+        <mat-card-title>Achievements</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="profile__achievements">
+          @for (achievement of achievements(); track achievement.id) {
+            <div
+              class="profile__achievement"
+              [class.profile__achievement--locked]="!achievement.unlocked"
+              [matTooltip]="achievement.description"
+            >
+              <mat-icon>{{ achievement.unlocked ? achievement.icon : 'lock' }}</mat-icon>
+              <div>
+                <p class="profile__achievement-title">{{ achievement.title }}</p>
+                <p class="profile__achievement-status">
+                  {{ achievement.unlocked ? ('Unlocked ' + (achievement.unlockedAt | date: 'mediumDate')) : 'Locked' }}
+                </p>
+              </div>
+            </div>
+          }
+        </div>
       </mat-card-content>
     </mat-card>
 

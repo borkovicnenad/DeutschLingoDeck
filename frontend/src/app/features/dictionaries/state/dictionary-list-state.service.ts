@@ -1,9 +1,17 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { Sort } from '@angular/material/sort';
 
 import { AppError } from '../../../shared/models/api-error.model';
 import { SAMPLE_DICTIONARIES } from '../dictionaries.sample-data';
 import { DictionarySummary } from '../models/dictionary.model';
 import { DictionaryApiService } from '../services/dictionary-api.service';
+
+function compareValues(a: unknown, b: unknown): number {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a - b;
+  }
+  return String(a).localeCompare(String(b));
+}
 
 /**
  * Local reactive state for the Dictionary List page.
@@ -26,6 +34,7 @@ export class DictionaryListStateService {
   private readonly sizeSignal = signal(20);
   private readonly totalElementsSignal = signal(SAMPLE_DICTIONARIES.length);
   private readonly searchTermSignal = signal('');
+  private readonly sortSignal = signal<Sort>({ active: '', direction: '' });
 
   readonly loading = this.loadingSignal.asReadonly();
   readonly error = this.errorSignal.asReadonly();
@@ -34,15 +43,27 @@ export class DictionaryListStateService {
   readonly size = this.sizeSignal.asReadonly();
   readonly totalElements = this.totalElementsSignal.asReadonly();
   readonly searchTerm = this.searchTermSignal.asReadonly();
+  readonly sort = this.sortSignal.asReadonly();
 
   /**
-   * Filters the currently loaded page client-side. The backend does not
-   * expose a name search parameter, so search is limited to the loaded page.
+   * Filters and sorts the currently loaded page client-side. The backend
+   * does not expose a name search parameter, so both are limited to the
+   * loaded page.
    */
   readonly dictionaries = computed(() => {
     const term = this.searchTermSignal().trim().toLowerCase();
-    const dictionaries = this.dictionariesSignal();
-    return term ? dictionaries.filter((d) => d.name.toLowerCase().includes(term)) : dictionaries;
+    const filtered = term
+      ? this.dictionariesSignal().filter((d) => d.name.toLowerCase().includes(term))
+      : this.dictionariesSignal();
+
+    const sort = this.sortSignal();
+    if (!sort.active || sort.direction === '') {
+      return filtered;
+    }
+
+    const factor = sort.direction === 'asc' ? 1 : -1;
+    const active = sort.active as keyof DictionarySummary;
+    return [...filtered].sort((a, b) => factor * compareValues(a[active], b[active]));
   });
 
   readonly isEmpty = computed(
@@ -76,6 +97,10 @@ export class DictionaryListStateService {
 
   setSearchTerm(term: string): void {
     this.searchTermSignal.set(term);
+  }
+
+  setSort(sort: Sort): void {
+    this.sortSignal.set(sort);
   }
 
   removeLocally(dictionaryId: number): void {

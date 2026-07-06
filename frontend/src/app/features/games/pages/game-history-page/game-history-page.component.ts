@@ -7,7 +7,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { RouterLink } from '@angular/router';
 
-import { BadgeComponent } from '../../../../shared/components/badge/badge.component';
+import { BadgeComponent, BadgeVariant } from '../../../../shared/components/badge/badge.component';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
@@ -16,6 +16,14 @@ import { SAMPLE_GAME_HISTORY } from '../../games.sample-data';
 import { GameStatus } from '../../models/game-status.enum';
 import { GameSummary } from '../../models/game.model';
 import { GameApiService } from '../../services/game-api.service';
+
+const STATUS_BADGE_VARIANT: Record<GameStatus, BadgeVariant> = {
+  CREATED: 'neutral',
+  STARTED: 'info',
+  IN_PROGRESS: 'info',
+  FINISHED: 'success',
+  ABANDONED: 'danger',
+};
 
 @Component({
   selector: 'app-game-history-page',
@@ -89,5 +97,9 @@ export class GameHistoryPageComponent {
 
   protected onPage(event: PageEvent): void {
     this.load(event.pageIndex, event.pageSize);
+  }
+
+  protected statusBadgeVariant(status: GameStatus): BadgeVariant {
+    return STATUS_BADGE_VARIANT[status];
   }
 }

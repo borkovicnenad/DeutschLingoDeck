@@ -21,3 +21,13 @@
 .statistics__progress {
   margin-bottom: 1rem;
 }
+
+.statistics__charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1rem;
+}
+
+.statistics__chart-card {
+  min-width: 0;
+}
