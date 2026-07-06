@@ -14,4 +14,26 @@ export interface CardDetail extends CardSummary {
   example?: string | null;
   notes?: string | null;
   difficultyLevel?: number | null;
+  tags?: string[];
+}
+
+export interface CardRequest {
+  cardType: CardType;
+  article?: string | null;
+  sourceText: string;
+  primaryTranslation?: string;
+  acceptedAnswers?: string[];
+  example?: string | null;
+  notes?: string | null;
+  difficultyLevel?: number | null;
+  tags?: string[];
+}
+
+export type CardFilterStatus = 'new' | 'due' | 'mastered';
+
+export interface CardFilter {
+  tag?: string;
+  difficulty?: number;
+  status?: CardFilterStatus;
+  search?: string;
 }

@@ -2,6 +2,7 @@ package com.deutschlingodeck.common.exception;
 
 import com.deutschlingodeck.common.response.ErrorResponse;
 import com.deutschlingodeck.common.validation.ValidationErrorExtractor;
+import com.deutschlingodeck.dictionary.exception.DictionaryImportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -65,6 +66,11 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(BusinessException.class)
 	public ResponseEntity<ErrorResponse> handleBusiness(BusinessException ex) {
 		return errorResponse(HttpStatus.BAD_REQUEST, ex);
+	}
+
+	@ExceptionHandler(DictionaryImportException.class)
+	public ResponseEntity<ErrorResponse> handleDictionaryImport(DictionaryImportException ex) {
+		return errorResponse(HttpStatus.UNPROCESSABLE_ENTITY, ex);
 	}
 
 	@ExceptionHandler(Exception.class)

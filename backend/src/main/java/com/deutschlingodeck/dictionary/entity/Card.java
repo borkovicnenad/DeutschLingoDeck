@@ -45,6 +45,11 @@ public class Card {
 	@Column(name = "answer")
 	private List<String> acceptedAnswers;
 
+	@ElementCollection
+	@CollectionTable(name = "card_tags", joinColumns = @JoinColumn(name = "card_id"))
+	@Column(name = "tag")
+	private List<String> tags;
+
 	private String example;
 
 	private String notes;
@@ -114,6 +119,14 @@ public class Card {
 
 	public void setAcceptedAnswers(List<String> acceptedAnswers) {
 		this.acceptedAnswers = acceptedAnswers;
+	}
+
+	public List<String> getTags() {
+		return tags;
+	}
+
+	public void setTags(List<String> tags) {
+		this.tags = tags;
 	}
 
 	public String getExample() {

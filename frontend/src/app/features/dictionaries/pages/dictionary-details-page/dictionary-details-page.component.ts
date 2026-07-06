@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { Router, RouterLink } from '@angular/router';
 
@@ -22,9 +23,11 @@ import { AiRecommendation } from '../../../ai-assistant/models/ai-assistant.mode
 import { AiAssistantService } from '../../../ai-assistant/services/ai-assistant.service';
 import { SAMPLE_CARDS, SAMPLE_DICTIONARY_DETAIL } from '../../dictionaries.sample-data';
 import { CardType } from '../../models/card-type.enum';
-import { CardSummary } from '../../models/card.model';
+import { CardFilter, CardFilterStatus, CardSummary } from '../../models/card.model';
 import { DictionaryDetail } from '../../models/dictionary.model';
 import { DictionaryApiService } from '../../services/dictionary-api.service';
+
+const CARD_TYPES: CardType[] = ['WORD', 'NOUN', 'VERB', 'PHRASE', 'SENTENCE'];
 
 const CARD_TYPE_BADGE_VARIANT: Record<CardType, BadgeVariant> = {
   NOUN: 'info',
@@ -38,6 +41,7 @@ const CARD_TYPE_BADGE_VARIANT: Record<CardType, BadgeVariant> = {
   selector: 'app-dictionary-details-page',
   imports: [
     DatePipe,
+    FormsModule,
     ReactiveFormsModule,
     RouterLink,
     MatButtonModule,
@@ -48,6 +52,7 @@ const CARD_TYPE_BADGE_VARIANT: Record<CardType, BadgeVariant> = {
     MatTableModule,
     MatPaginatorModule,
     MatProgressBarModule,
+    MatSelectModule,
     PageHeaderComponent,
     BreadcrumbsComponent,
     BadgeComponent,
@@ -78,7 +83,24 @@ export class DictionaryDetailsPageComponent implements OnInit {
   protected readonly cardsLoading = signal(false);
   protected readonly cardsPage = signal(0);
   protected readonly cardsTotal = signal(SAMPLE_CARDS.length);
-  protected readonly displayedColumns = ['sourceText', 'primaryTranslation', 'cardType'];
+  protected readonly displayedColumns = ['sourceText', 'primaryTranslation', 'cardType', 'actions'];
+
+  protected readonly cardTypes = CARD_TYPES;
+  protected readonly filterSearch = signal('');
+  protected readonly filterStatus = signal<CardFilterStatus | ''>('');
+
+  protected readonly addingCard = signal(false);
+  protected readonly savingCard = signal(false);
+  protected readonly cardForm = this.formBuilder.nonNullable.group({
+    cardType: ['WORD' as CardType, [Validators.required]],
+    article: [''],
+    sourceText: ['', [Validators.required, Validators.maxLength(255)]],
+    primaryTranslation: ['', [Validators.maxLength(255)]],
+    example: ['', [Validators.maxLength(1000)]],
+    notes: ['', [Validators.maxLength(1000)]],
+    difficultyLevel: [null as number | null],
+    tags: [''],
+  });
 
   protected readonly recommendations = signal<AiRecommendation[]>([]);
   protected readonly recommendationsLoading = signal(true);
@@ -138,7 +160,12 @@ export class DictionaryDetailsPageComponent implements OnInit {
   private loadCards(page: number): void {
     this.cardsLoading.set(true);
 
-    this.dictionaryApi.listCards(this.dictionaryIdAsNumber(), page).subscribe({
+    const filter: CardFilter = {
+      search: this.filterSearch() || undefined,
+      status: this.filterStatus() || undefined,
+    };
+
+    this.dictionaryApi.listCards(this.dictionaryIdAsNumber(), page, 20, filter).subscribe({
       next: (response) => {
         this.cards.set(response.content);
         this.cardsPage.set(response.page);
@@ -151,6 +178,77 @@ export class DictionaryDetailsPageComponent implements OnInit {
 
   protected onCardsPage(event: PageEvent): void {
     this.loadCards(event.pageIndex);
+  }
+
+  protected applyFilters(): void {
+    this.loadCards(0);
+  }
+
+  protected startAddingCard(): void {
+    this.cardForm.reset({ cardType: 'WORD', difficultyLevel: null });
+    this.addingCard.set(true);
+  }
+
+  protected cancelAddingCard(): void {
+    this.addingCard.set(false);
+  }
+
+  protected saveNewCard(): void {
+    if (this.cardForm.invalid || this.savingCard()) {
+      this.cardForm.markAllAsTouched();
+      return;
+    }
+
+    const values = this.cardForm.getRawValue();
+    this.savingCard.set(true);
+
+    this.dictionaryApi
+      .createCard(this.dictionaryIdAsNumber(), {
+        cardType: values.cardType,
+        article: values.article || undefined,
+        sourceText: values.sourceText,
+        primaryTranslation: values.primaryTranslation || undefined,
+        acceptedAnswers: values.primaryTranslation ? [values.primaryTranslation] : undefined,
+        example: values.example || undefined,
+        notes: values.notes || undefined,
+        difficultyLevel: values.difficultyLevel ?? undefined,
+        tags: this.splitTags(values.tags),
+      })
+      .subscribe({
+        next: () => {
+          this.savingCard.set(false);
+          this.addingCard.set(false);
+          this.loadCards(this.cardsPage());
+          this.loadDictionary();
+        },
+        error: () => this.savingCard.set(false),
+      });
+  }
+
+  protected deleteCard(card: CardSummary): void {
+    this.confirmDialog
+      .confirm({
+        title: 'Delete card',
+        message: `Remove "${card.sourceText}" from this dictionary? This cannot be undone.`,
+        confirmLabel: 'Delete',
+      })
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        this.dictionaryApi.deleteCard(this.dictionaryIdAsNumber(), card.id).subscribe(() => {
+          this.loadCards(this.cardsPage());
+          this.loadDictionary();
+        });
+      });
+  }
+
+  private splitTags(raw: string): string[] | undefined {
+    const tags = raw
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    return tags.length > 0 ? tags : undefined;
   }
 
   protected startEditing(): void {

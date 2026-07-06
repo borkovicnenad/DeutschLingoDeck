@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { forkJoin, map, switchMap } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -68,6 +69,9 @@ export class DictionaryImportPageComponent {
   protected readonly aiGeneratedCards = signal<AiGeneratedCard[] | null>(null);
   protected readonly aiError = signal<string | null>(null);
   protected readonly aiAdded = signal(false);
+  protected readonly aiAdding = signal(false);
+  protected readonly aiAddError = signal<string | null>(null);
+  protected readonly aiCreatedDictionaryId = signal<number | null>(null);
 
   protected readonly aiForm = this.formBuilder.nonNullable.group({
     name: ['', [Validators.required, Validators.maxLength(150)]],
@@ -99,13 +103,54 @@ export class DictionaryImportPageComponent {
   }
 
   protected addGeneratedToDictionary(): void {
-    this.aiAdded.set(true);
+    const cards = this.aiGeneratedCards();
+    if (!cards || cards.length === 0 || this.aiAdding()) {
+      return;
+    }
+
+    const { name } = this.aiForm.getRawValue();
+    const { sourceLanguage, targetLanguage } = this.form.getRawValue();
+
+    this.aiAdding.set(true);
+    this.aiAddError.set(null);
+
+    this.dictionaryApi
+      .create({ name, sourceLanguage, targetLanguage })
+      .pipe(
+        switchMap((dictionary) =>
+          forkJoin(
+            cards.map((card) =>
+              this.dictionaryApi.createCard(dictionary.id, {
+                cardType: card.cardType,
+                sourceText: card.sourceText,
+                primaryTranslation: card.primaryTranslation,
+                acceptedAnswers: [card.primaryTranslation],
+                example: card.exampleSentence,
+                difficultyLevel: card.estimatedDifficulty,
+              }),
+            ),
+          ).pipe(map(() => dictionary)),
+        ),
+      )
+      .subscribe({
+        next: (dictionary) => {
+          this.aiAdding.set(false);
+          this.aiAdded.set(true);
+          this.aiCreatedDictionaryId.set(dictionary.id);
+        },
+        error: (error: AppError) => {
+          this.aiAdding.set(false);
+          this.aiAddError.set(error.message);
+        },
+      });
   }
 
   protected resetAiGeneration(): void {
     this.aiGeneratedCards.set(null);
     this.aiError.set(null);
     this.aiAdded.set(false);
+    this.aiAddError.set(null);
+    this.aiCreatedDictionaryId.set(null);
     this.aiForm.reset({ level: 'A2' });
   }
 

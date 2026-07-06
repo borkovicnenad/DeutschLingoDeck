@@ -1,68 +1,311 @@
 package com.deutschlingodeck.game.service;
 
+import com.deutschlingodeck.authentication.entity.User;
+import com.deutschlingodeck.authentication.repository.UserRepository;
+import com.deutschlingodeck.common.exception.ConflictException;
+import com.deutschlingodeck.common.exception.ResourceNotFoundException;
+import com.deutschlingodeck.common.pagination.PageMapper;
 import com.deutschlingodeck.common.pagination.PageResponse;
+import com.deutschlingodeck.common.security.CurrentUserProvider;
+import com.deutschlingodeck.common.security.OwnershipGuard;
+import com.deutschlingodeck.dictionary.entity.Card;
+import com.deutschlingodeck.dictionary.entity.Dictionary;
+import com.deutschlingodeck.dictionary.repository.CardRepository;
+import com.deutschlingodeck.dictionary.repository.DictionaryRepository;
 import com.deutschlingodeck.game.dto.AnswerValidationResponse;
 import com.deutschlingodeck.game.dto.CreateGameRequest;
+import com.deutschlingodeck.game.dto.CurrentCardResponse;
 import com.deutschlingodeck.game.dto.GameResponse;
 import com.deutschlingodeck.game.dto.GameStatus;
 import com.deutschlingodeck.game.dto.GameSummaryResponse;
 import com.deutschlingodeck.game.dto.SubmitAnswerRequest;
+import com.deutschlingodeck.game.dto.ValidationResult;
+import com.deutschlingodeck.game.entity.Game;
+import com.deutschlingodeck.game.entity.GameAnswer;
+import com.deutschlingodeck.game.mapper.GameMapper;
+import com.deutschlingodeck.game.progress.CardProgress;
+import com.deutschlingodeck.game.progress.CardProgressRepository;
+import com.deutschlingodeck.game.progress.SpacedRepetitionScheduler;
 import com.deutschlingodeck.game.repository.GameAnswerRepository;
 import com.deutschlingodeck.game.repository.GameRepository;
+import com.deutschlingodeck.gamification.service.GamificationService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Service
 public class GameServiceImpl implements GameService {
 
+	/** Cap on how many cards a single game deals, even if more are due. */
+	private static final int SESSION_CARD_LIMIT = 20;
+
 	private final GameRepository gameRepository;
 	private final GameAnswerRepository gameAnswerRepository;
+	private final DictionaryRepository dictionaryRepository;
+	private final CardRepository cardRepository;
+	private final CardProgressRepository cardProgressRepository;
+	private final UserRepository userRepository;
+	private final GameMapper gameMapper;
+	private final AnswerValidator answerValidator;
+	private final SpacedRepetitionScheduler scheduler;
+	private final GamificationService gamificationService;
+	private final CurrentUserProvider currentUserProvider;
+	private final OwnershipGuard ownershipGuard;
 
-	public GameServiceImpl(GameRepository gameRepository, GameAnswerRepository gameAnswerRepository) {
+	public GameServiceImpl(
+			GameRepository gameRepository,
+			GameAnswerRepository gameAnswerRepository,
+			DictionaryRepository dictionaryRepository,
+			CardRepository cardRepository,
+			CardProgressRepository cardProgressRepository,
+			UserRepository userRepository,
+			GameMapper gameMapper,
+			AnswerValidator answerValidator,
+			SpacedRepetitionScheduler scheduler,
+			GamificationService gamificationService,
+			CurrentUserProvider currentUserProvider,
+			OwnershipGuard ownershipGuard) {
 		this.gameRepository = gameRepository;
 		this.gameAnswerRepository = gameAnswerRepository;
+		this.dictionaryRepository = dictionaryRepository;
+		this.cardRepository = cardRepository;
+		this.cardProgressRepository = cardProgressRepository;
+		this.userRepository = userRepository;
+		this.gameMapper = gameMapper;
+		this.answerValidator = answerValidator;
+		this.scheduler = scheduler;
+		this.gamificationService = gamificationService;
+		this.currentUserProvider = currentUserProvider;
+		this.ownershipGuard = ownershipGuard;
 	}
 
 	@Override
+	@Transactional
 	public GameResponse createGame(CreateGameRequest request) {
-		// TODO: load the dictionary, build the card deck for the requested gameMode
-		// and persist a new Game in CREATED/STARTED status.
-		throw new UnsupportedOperationException("Not implemented yet");
+		Long userId = currentUserProvider.getUserId();
+		Dictionary dictionary = dictionaryRepository.findById(request.dictionaryId())
+				.filter(d -> !d.isDeleted())
+				.orElseThrow(() -> ResourceNotFoundException.of("Dictionary", request.dictionaryId()));
+		ownershipGuard.requireOwner(dictionary.getOwner().getId(), userId);
+
+		List<Card> deck = buildDeck(userId, dictionary.getId());
+		if (deck.isEmpty()) {
+			throw new ConflictException("This dictionary has no cards yet - add or import some before starting a game");
+		}
+
+		User user = userRepository.getReferenceById(userId);
+		Game game = new Game(user, dictionary, GameStatus.IN_PROGRESS, deck.size());
+		game.setAnsweredCards(0);
+		game.setCorrectAnswers(0);
+		game.setIncorrectAnswers(0);
+		game.setStartedAt(OffsetDateTime.now());
+		game.setDeckCardIds(deck.stream().map(Card::getId).toList());
+		game = gameRepository.save(game);
+
+		return toGameResponse(game);
 	}
 
 	@Override
 	public PageResponse<GameSummaryResponse> listGames(GameStatus status, Long dictionaryId, int page, int size) {
-		// TODO: page games for the current user, optionally filtered by status/dictionaryId.
-		throw new UnsupportedOperationException("Not implemented yet");
+		Pageable pageable = PageRequest.of(page, size);
+		Page<Game> games = gameRepository.search(currentUserProvider.getUserId(), status, dictionaryId, pageable);
+		return PageMapper.toPageResponse(games, this::toGameSummaryResponse);
 	}
 
 	@Override
 	public GameResponse getGame(Long gameId) {
-		// TODO: load the game, verify ownership, map to GameResponse including the current card.
-		throw new UnsupportedOperationException("Not implemented yet");
+		return toGameResponse(loadOwnedGame(gameId));
 	}
 
 	@Override
+	@Transactional
 	public AnswerValidationResponse submitAnswer(Long gameId, SubmitAnswerRequest request) {
-		// TODO: validate the given answer against the card's accepted answers,
-		// persist a GameAnswer via gameAnswerRepository and advance to the next card.
-		throw new UnsupportedOperationException("Not implemented yet");
+		Long userId = currentUserProvider.getUserId();
+		Game game = loadOwnedGame(gameId);
+		requireInProgress(game);
+
+		List<Long> deckCardIds = game.getDeckCardIds();
+		int index = game.getAnsweredCards();
+		if (index >= deckCardIds.size()) {
+			throw new ConflictException("All cards in this game have already been answered");
+		}
+		Long expectedCardId = deckCardIds.get(index);
+		if (!expectedCardId.equals(request.cardId())) {
+			throw new ConflictException("The submitted card is not the current card for this game");
+		}
+
+		Card card = cardRepository.findById(request.cardId())
+				.orElseThrow(() -> ResourceNotFoundException.of("Card", request.cardId()));
+
+		ValidationResult result = answerValidator.validate(card, request.answer());
+		boolean correct = result == ValidationResult.CORRECT;
+		OffsetDateTime now = OffsetDateTime.now();
+
+		GameAnswer answer = new GameAnswer(game, card, request.answer(), result, correct, request.responseTimeMs());
+		answer.setAnsweredAt(now);
+		gameAnswerRepository.save(answer);
+
+		game.setAnsweredCards(index + 1);
+		game.setCorrectAnswers(game.getCorrectAnswers() + (correct ? 1 : 0));
+		game.setIncorrectAnswers(game.getIncorrectAnswers() + (correct ? 0 : 1));
+
+		CardProgress progress = cardProgressRepository.findByUserIdAndCardId(userId, card.getId())
+				.orElseGet(() -> new CardProgress(userRepository.getReferenceById(userId), card));
+		scheduler.schedule(progress, result, now);
+		cardProgressRepository.save(progress);
+
+		gamificationService.recordAnswer(userId, correct, now);
+
+		String expectedAnswer = card.getAcceptedAnswers() != null && !card.getAcceptedAnswers().isEmpty()
+				? card.getAcceptedAnswers().get(0)
+				: card.getPrimaryTranslation();
+
+		return new AnswerValidationResponse(
+				result, correct, request.answer(), expectedAnswer, feedbackMessage(result), resolveCurrentCard(game));
 	}
 
 	@Override
+	@Transactional
 	public GameSummaryResponse finishGame(Long gameId) {
-		// TODO: mark the game as FINISHED and compute the summary statistics.
-		throw new UnsupportedOperationException("Not implemented yet");
+		Long userId = currentUserProvider.getUserId();
+		Game game = loadOwnedGame(gameId);
+		requireInProgress(game);
+
+		game.setStatus(GameStatus.FINISHED);
+		game.setFinishedAt(OffsetDateTime.now());
+
+		boolean perfectGame = game.getAnsweredCards() > 0 && game.getIncorrectAnswers() == 0;
+		gamificationService.evaluateAchievements(userId, perfectGame, game.getFinishedAt());
+
+		return buildSummary(game);
 	}
 
 	@Override
+	@Transactional
 	public GameSummaryResponse abandonGame(Long gameId) {
-		// TODO: mark the game as ABANDONED and compute the summary statistics.
-		throw new UnsupportedOperationException("Not implemented yet");
+		Game game = loadOwnedGame(gameId);
+		requireInProgress(game);
+
+		game.setStatus(GameStatus.ABANDONED);
+		game.setFinishedAt(OffsetDateTime.now());
+
+		return buildSummary(game);
 	}
 
 	@Override
 	public GameSummaryResponse getGameSummary(Long gameId) {
-		// TODO: load the game and compute/return its summary statistics.
-		throw new UnsupportedOperationException("Not implemented yet");
+		return buildSummary(loadOwnedGame(gameId));
+	}
+
+	/**
+	 * Deals due cards first (previously reviewed, {@code due_date} today or earlier), then
+	 * never-reviewed cards, then not-yet-due cards, capped at {@link #SESSION_CARD_LIMIT} so a
+	 * large dictionary never dumps every card into a single session.
+	 */
+	private List<Card> buildDeck(Long userId, Long dictionaryId) {
+		List<Card> allCards = cardRepository.findByDictionaryIdOrderByPosition(dictionaryId);
+		if (allCards.isEmpty()) {
+			return List.of();
+		}
+
+		Set<Long> dueCardIds = new HashSet<>();
+		for (CardProgress progress : cardProgressRepository.findDueForDictionary(userId, dictionaryId, LocalDate.now())) {
+			dueCardIds.add(progress.getCard().getId());
+		}
+		Set<Long> reviewedCardIds = new HashSet<>(cardProgressRepository.findReviewedCardIdsForDictionary(userId, dictionaryId));
+
+		int sessionCap = Math.min(allCards.size(), SESSION_CARD_LIMIT);
+		List<Card> deck = new ArrayList<>();
+		for (Card card : allCards) {
+			if (dueCardIds.contains(card.getId())) {
+				deck.add(card);
+			}
+		}
+		addUpTo(deck, allCards.stream().filter(c -> !reviewedCardIds.contains(c.getId())).toList(), sessionCap);
+		addUpTo(deck, allCards.stream().filter(c -> reviewedCardIds.contains(c.getId()) && !dueCardIds.contains(c.getId())).toList(), sessionCap);
+
+		return deck.size() > sessionCap ? new ArrayList<>(deck.subList(0, sessionCap)) : deck;
+	}
+
+	private void addUpTo(List<Card> deck, List<Card> candidates, int cap) {
+		for (Card candidate : candidates) {
+			if (deck.size() >= cap) {
+				return;
+			}
+			deck.add(candidate);
+		}
+	}
+
+	private Game loadOwnedGame(Long gameId) {
+		Game game = gameRepository.findById(gameId).orElseThrow(() -> ResourceNotFoundException.of("Game", gameId));
+		ownershipGuard.requireOwner(game.getUser().getId(), currentUserProvider.getUserId());
+		return game;
+	}
+
+	private void requireInProgress(Game game) {
+		if (game.getStatus() != GameStatus.IN_PROGRESS) {
+			throw new ConflictException("This game is not currently in progress");
+		}
+	}
+
+	private CurrentCardResponse resolveCurrentCard(Game game) {
+		List<Long> deckCardIds = game.getDeckCardIds();
+		int index = game.getAnsweredCards();
+		if (index >= deckCardIds.size()) {
+			return null;
+		}
+		Long cardId = deckCardIds.get(index);
+		Card card = cardRepository.findById(cardId).orElseThrow(() -> ResourceNotFoundException.of("Card", cardId));
+		return gameMapper.toCurrentCardResponse(card);
+	}
+
+	private GameResponse toGameResponse(Game game) {
+		GameResponse base = gameMapper.toGameResponse(game);
+		return new GameResponse(
+				base.id(), base.dictionaryId(), base.status(), base.totalCards(), base.answeredCards(),
+				base.correctAnswers(), base.incorrectAnswers(), resolveCurrentCard(game));
+	}
+
+	private GameSummaryResponse toGameSummaryResponse(Game game) {
+		return buildSummary(game);
+	}
+
+	private GameSummaryResponse buildSummary(Game game) {
+		GameSummaryResponse base = gameMapper.toGameSummaryResponse(game);
+		int correct = game.getCorrectAnswers() == null ? 0 : game.getCorrectAnswers();
+		int incorrect = game.getIncorrectAnswers() == null ? 0 : game.getIncorrectAnswers();
+		int answered = correct + incorrect;
+		Double accuracy = answered == 0 ? null : (double) correct / answered;
+		Long durationSeconds = game.getFinishedAt() == null
+				? null
+				: Duration.between(game.getStartedAt(), game.getFinishedAt()).getSeconds();
+		Double averageResponseTimeMs = gameAnswerRepository.averageResponseTimeMsByGame(game.getId());
+
+		return new GameSummaryResponse(
+				base.gameId(), base.status(), base.totalCards(), base.answeredCards(), correct, incorrect,
+				accuracy, durationSeconds, averageResponseTimeMs);
+	}
+
+	private String feedbackMessage(ValidationResult result) {
+		return switch (result) {
+			case CORRECT -> "Correct!";
+			case WRONG_ARTICLE -> "Almost - check the article.";
+			case TYPO -> "Close - looks like a typo.";
+			case PARTIALLY_CORRECT -> "Partially correct.";
+			case MISSING_WORD -> "Your answer is missing a word.";
+			case EXTRA_WORD -> "Your answer has an extra word.";
+			case WRONG_SENTENCE -> "Not quite the right sentence.";
+			case WRONG_TRANSLATION -> "That's not the right translation.";
+		};
 	}
 }

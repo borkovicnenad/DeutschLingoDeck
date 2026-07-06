@@ -7,6 +7,7 @@ export interface DashboardStatistics {
   totalStudyTimeSeconds?: number;
   currentLearningStreak?: number;
   longestLearningStreak?: number;
+  cardsDueToday?: number;
 }
 
 export interface CardStatistics {

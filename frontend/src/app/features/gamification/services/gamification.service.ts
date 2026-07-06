@@ -1,35 +1,33 @@
-import { Injectable } from '@angular/core';
-import { Observable, delay, of } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { Observable } from 'rxjs';
 
-import {
-  SAMPLE_ACHIEVEMENTS,
-  SAMPLE_DAILY_GOAL,
-  SAMPLE_LEVEL_PROGRESS,
-  SAMPLE_WEEKLY_ACTIVITY,
-} from '../gamification.sample-data';
+import { API_BASE_URL } from '../../../core/config/api-base-url.token';
 import { Achievement, DailyGoal, LevelProgress, WeeklyActivityPoint } from '../models/gamification.model';
 
 /**
- * Frontend-only gamification layer. There is no backend for XP, levels,
- * achievements or goals, so this service simulates network latency around
- * static demo data instead of calling HttpClient, matching the shape callers
- * already expect from the real *-api.service.ts services.
+ * XP, levels, achievements, daily goal and weekly activity, computed and persisted by the
+ * backend from real game/answer history. One HTTP call per method, matching the shape this
+ * service already exposed when it was a frontend-only demo layer.
  */
 @Injectable({ providedIn: 'root' })
 export class GamificationService {
+  private readonly http = inject(HttpClient);
+  private readonly baseUrl = inject(API_BASE_URL);
+
   getLevelProgress(): Observable<LevelProgress> {
-    return of(SAMPLE_LEVEL_PROGRESS).pipe(delay(300));
+    return this.http.get<LevelProgress>(`${this.baseUrl}/gamification/level-progress`);
   }
 
   getDailyGoal(): Observable<DailyGoal> {
-    return of(SAMPLE_DAILY_GOAL).pipe(delay(300));
+    return this.http.get<DailyGoal>(`${this.baseUrl}/gamification/daily-goal`);
   }
 
   getAchievements(): Observable<Achievement[]> {
-    return of(SAMPLE_ACHIEVEMENTS).pipe(delay(400));
+    return this.http.get<Achievement[]>(`${this.baseUrl}/gamification/achievements`);
   }
 
   getWeeklyActivity(): Observable<WeeklyActivityPoint[]> {
-    return of(SAMPLE_WEEKLY_ACTIVITY).pipe(delay(400));
+    return this.http.get<WeeklyActivityPoint[]>(`${this.baseUrl}/gamification/weekly-activity`);
   }
 }

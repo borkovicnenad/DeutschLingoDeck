@@ -4,10 +4,13 @@ import com.deutschlingodeck.common.constants.ApiConstants;
 import com.deutschlingodeck.common.pagination.PageResponse;
 import com.deutschlingodeck.dictionary.dto.CardDetailResponse;
 import com.deutschlingodeck.dictionary.dto.CardSummaryResponse;
+import com.deutschlingodeck.dictionary.dto.CreateCardRequest;
+import com.deutschlingodeck.dictionary.dto.CreateDictionaryRequest;
 import com.deutschlingodeck.dictionary.dto.DictionaryDetailResponse;
 import com.deutschlingodeck.dictionary.dto.DictionaryImportRequest;
 import com.deutschlingodeck.dictionary.dto.DictionaryImportResponse;
 import com.deutschlingodeck.dictionary.dto.DictionarySummaryResponse;
+import com.deutschlingodeck.dictionary.dto.UpdateCardRequest;
 import com.deutschlingodeck.dictionary.dto.UpdateDictionaryRequest;
 import com.deutschlingodeck.dictionary.service.DictionaryService;
 import jakarta.validation.Valid;
@@ -41,6 +44,11 @@ public class DictionaryController {
 		return ResponseEntity.ok(dictionaryService.listDictionaries(page, size));
 	}
 
+	@PostMapping
+	public ResponseEntity<DictionaryDetailResponse> createDictionary(@Valid @RequestBody CreateDictionaryRequest request) {
+		return ResponseEntity.status(HttpStatus.CREATED).body(dictionaryService.createDictionary(request));
+	}
+
 	@PostMapping(value = "/import", consumes = "multipart/form-data")
 	public ResponseEntity<DictionaryImportResponse> importDictionary(@Valid @ModelAttribute DictionaryImportRequest request) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(dictionaryService.importDictionary(request));
@@ -66,13 +74,35 @@ public class DictionaryController {
 	@GetMapping("/{dictionaryId}/cards")
 	public ResponseEntity<PageResponse<CardSummaryResponse>> listCards(
 			@PathVariable Long dictionaryId,
+			@RequestParam(required = false) String tag,
+			@RequestParam(required = false) Integer difficulty,
+			@RequestParam(required = false) String status,
+			@RequestParam(required = false) String search,
 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE) int page,
 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE_SIZE) int size) {
-		return ResponseEntity.ok(dictionaryService.listCards(dictionaryId, page, size));
+		return ResponseEntity.ok(dictionaryService.listCards(dictionaryId, tag, difficulty, status, search, page, size));
 	}
 
 	@GetMapping("/{dictionaryId}/cards/{cardId}")
 	public ResponseEntity<CardDetailResponse> getCard(@PathVariable Long dictionaryId, @PathVariable Long cardId) {
 		return ResponseEntity.ok(dictionaryService.getCard(dictionaryId, cardId));
+	}
+
+	@PostMapping("/{dictionaryId}/cards")
+	public ResponseEntity<CardDetailResponse> createCard(
+			@PathVariable Long dictionaryId, @Valid @RequestBody CreateCardRequest request) {
+		return ResponseEntity.status(HttpStatus.CREATED).body(dictionaryService.createCard(dictionaryId, request));
+	}
+
+	@PutMapping("/{dictionaryId}/cards/{cardId}")
+	public ResponseEntity<CardDetailResponse> updateCard(
+			@PathVariable Long dictionaryId, @PathVariable Long cardId, @Valid @RequestBody UpdateCardRequest request) {
+		return ResponseEntity.ok(dictionaryService.updateCard(dictionaryId, cardId, request));
+	}
+
+	@DeleteMapping("/{dictionaryId}/cards/{cardId}")
+	public ResponseEntity<Void> deleteCard(@PathVariable Long dictionaryId, @PathVariable Long cardId) {
+		dictionaryService.deleteCard(dictionaryId, cardId);
+		return ResponseEntity.noContent().build();
 	}
 }

@@ -18,6 +18,7 @@ tags:
   - name: Dictionaries
   - name: Games
   - name: Statistics
+  - name: Gamification
 
 paths:
   /auth/register:
@@ -171,6 +172,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/PagedDictionarySummaryResponse"
 
+    post:
+      tags: [Dictionaries]
+      summary: Create an empty dictionary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDictionaryRequest"
+      responses:
+        "201":
+          description: Dictionary created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DictionaryDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
   /dictionaries/import:
     post:
       tags: [Dictionaries]
@@ -251,6 +271,31 @@ paths:
       summary: List cards inside a dictionary
       parameters:
         - $ref: "#/components/parameters/DictionaryId"
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: difficulty
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+        - name: status
+          in: query
+          required: false
+          description: Spaced-repetition status, derived from the current user's review progress
+          schema:
+            type: string
+            enum: [new, due, mastered]
+        - name: search
+          in: query
+          required: false
+          description: Free-text match against source text or translation
+          schema:
+            type: string
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Size"
       responses:
@@ -260,6 +305,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PagedCardResponse"
+
+    post:
+      tags: [Dictionaries]
+      summary: Create a card in a dictionary
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardRequest"
+      responses:
+        "201":
+          description: Card created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   /dictionaries/{dictionaryId}/cards/{cardId}:
     get:
@@ -275,6 +343,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CardDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    put:
+      tags: [Dictionaries]
+      summary: Update a card
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+        - $ref: "#/components/parameters/CardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardRequest"
+      responses:
+        "200":
+          description: Card updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    delete:
+      tags: [Dictionaries]
+      summary: Delete a card
+      parameters:
+        - $ref: "#/components/parameters/DictionaryId"
+        - $ref: "#/components/parameters/CardId"
+      responses:
+        "204":
+          description: Card deleted
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -485,6 +589,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PagedLearningHistoryResponse"
+
+  /gamification/level-progress:
+    get:
+      tags: [Gamification]
+      summary: Retrieve the current user's XP/level progress
+      responses:
+        "200":
+          description: Level progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelProgressResponse"
+
+  /gamification/daily-goal:
+    get:
+      tags: [Gamification]
+      summary: Retrieve the current user's daily review goal progress
+      responses:
+        "200":
+          description: Daily goal progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyGoalResponse"
+
+  /gamification/achievements:
+    get:
+      tags: [Gamification]
+      summary: List all achievements and the current user's unlock status for each
+      responses:
+        "200":
+          description: Achievements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AchievementResponse"
+
+  /gamification/weekly-activity:
+    get:
+      tags: [Gamification]
+      summary: Retrieve the current user's cards-reviewed count for each of the last 7 days
+      responses:
+        "200":
+          description: Weekly activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeeklyActivityPointResponse"
 
 components:
   securitySchemes:
@@ -749,6 +905,21 @@ components:
         targetLanguage:
           type: string
 
+    CreateDictionaryRequest:
+      type: object
+      required: [name, sourceLanguage, targetLanguage]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+        description:
+          type: string
+          maxLength: 1000
+        sourceLanguage:
+          type: string
+        targetLanguage:
+          type: string
+
     DictionarySummaryResponse:
       type: object
       required: [id, name, sourceLanguage, targetLanguage, cardCount, createdAt]
@@ -816,6 +987,45 @@ components:
             difficultyLevel:
               type: integer
               nullable: true
+            tags:
+              type: array
+              items:
+                type: string
+
+    CardRequest:
+      type: object
+      required: [cardType, sourceText]
+      properties:
+        cardType:
+          $ref: "#/components/schemas/CardType"
+        article:
+          type: string
+          nullable: true
+        sourceText:
+          type: string
+          maxLength: 255
+        primaryTranslation:
+          type: string
+          maxLength: 255
+        acceptedAnswers:
+          type: array
+          items:
+            type: string
+        example:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        difficultyLevel:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
 
     CreateGameRequest:
       type: object
@@ -951,6 +1161,9 @@ components:
           type: integer
         longestLearningStreak:
           type: integer
+        cardsDueToday:
+          type: integer
+          format: int64
 
     CardStatisticsResponse:
       type: object
@@ -1146,3 +1359,51 @@ components:
         - EXTRA_WORD
         - PARTIALLY_CORRECT
         - WRONG_SENTENCE
+
+    LevelProgressResponse:
+      type: object
+      properties:
+        level:
+          type: integer
+        title:
+          type: string
+        currentXp:
+          type: integer
+          format: int64
+        xpToNextLevel:
+          type: integer
+          format: int64
+
+    DailyGoalResponse:
+      type: object
+      properties:
+        targetCards:
+          type: integer
+        completedCards:
+          type: integer
+
+    AchievementResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        unlocked:
+          type: boolean
+        unlockedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    WeeklyActivityPointResponse:
+      type: object
+      properties:
+        day:
+          type: string
+        cardsReviewed:
+          type: integer

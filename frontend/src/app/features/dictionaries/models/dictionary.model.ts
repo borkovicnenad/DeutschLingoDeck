@@ -19,6 +19,13 @@ export interface UpdateDictionaryRequest {
   targetLanguage: string;
 }
 
+export interface CreateDictionaryRequest {
+  name: string;
+  description?: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+}
+
 export interface DictionaryImportRequest {
   file: File;
   name: string;

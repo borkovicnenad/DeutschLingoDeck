@@ -16,6 +16,9 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "games")
@@ -50,6 +53,14 @@ public class Game {
 	private OffsetDateTime startedAt;
 
 	private OffsetDateTime finishedAt;
+
+	/**
+	 * Comma-separated, ordered card ids dealt for this game at creation time.
+	 * {@code answeredCards} indexes into this list to find the current card,
+	 * since due/new/resting cards are only decided once, at deal time.
+	 */
+	@Column(name = "deck_card_ids")
+	private String deckCardIds;
 
 	protected Game() {
 	}
@@ -135,5 +146,16 @@ public class Game {
 
 	public void setFinishedAt(OffsetDateTime finishedAt) {
 		this.finishedAt = finishedAt;
+	}
+
+	public List<Long> getDeckCardIds() {
+		if (deckCardIds == null || deckCardIds.isBlank()) {
+			return List.of();
+		}
+		return Arrays.stream(deckCardIds.split(",")).map(Long::parseLong).toList();
+	}
+
+	public void setDeckCardIds(List<Long> cardIds) {
+		this.deckCardIds = cardIds.stream().map(String::valueOf).collect(Collectors.joining(","));
 	}
 }

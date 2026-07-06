@@ -16,6 +16,7 @@ public record CardDetailResponse(
 		List<String> acceptedAnswers,
 		String example,
 		String notes,
-		Integer difficultyLevel
+		Integer difficultyLevel,
+		List<String> tags
 ) {
 }

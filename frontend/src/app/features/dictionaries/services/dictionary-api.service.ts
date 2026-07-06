@@ -4,8 +4,9 @@ import { Observable } from 'rxjs';
 
 import { API_BASE_URL } from '../../../core/config/api-base-url.token';
 import { PageResponse } from '../../../shared/models/page-response.model';
-import { CardDetail, CardSummary } from '../models/card.model';
+import { CardDetail, CardFilter, CardRequest, CardSummary } from '../models/card.model';
 import {
+  CreateDictionaryRequest,
   DictionaryDetail,
   DictionaryImportRequest,
   DictionaryImportResponse,
@@ -24,6 +25,10 @@ export class DictionaryApiService {
     return this.http.get<PageResponse<DictionarySummary>>(`${this.baseUrl}/dictionaries`, {
       params,
     });
+  }
+
+  create(request: CreateDictionaryRequest): Observable<DictionaryDetail> {
+    return this.http.post<DictionaryDetail>(`${this.baseUrl}/dictionaries`, request);
   }
 
   import(request: DictionaryImportRequest): Observable<DictionaryImportResponse> {
@@ -64,8 +69,21 @@ export class DictionaryApiService {
     dictionaryId: number,
     page = 0,
     size = 20,
+    filter?: CardFilter,
   ): Observable<PageResponse<CardSummary>> {
-    const params = new HttpParams().set('page', page).set('size', size);
+    let params = new HttpParams().set('page', page).set('size', size);
+    if (filter?.tag) {
+      params = params.set('tag', filter.tag);
+    }
+    if (filter?.difficulty != null) {
+      params = params.set('difficulty', filter.difficulty);
+    }
+    if (filter?.status) {
+      params = params.set('status', filter.status);
+    }
+    if (filter?.search) {
+      params = params.set('search', filter.search);
+    }
     return this.http.get<PageResponse<CardSummary>>(
       `${this.baseUrl}/dictionaries/${dictionaryId}/cards`,
       { params },
@@ -76,5 +94,20 @@ export class DictionaryApiService {
     return this.http.get<CardDetail>(
       `${this.baseUrl}/dictionaries/${dictionaryId}/cards/${cardId}`,
     );
+  }
+
+  createCard(dictionaryId: number, request: CardRequest): Observable<CardDetail> {
+    return this.http.post<CardDetail>(`${this.baseUrl}/dictionaries/${dictionaryId}/cards`, request);
+  }
+
+  updateCard(dictionaryId: number, cardId: number, request: CardRequest): Observable<CardDetail> {
+    return this.http.put<CardDetail>(
+      `${this.baseUrl}/dictionaries/${dictionaryId}/cards/${cardId}`,
+      request,
+    );
+  }
+
+  deleteCard(dictionaryId: number, cardId: number): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/dictionaries/${dictionaryId}/cards/${cardId}`);
   }
 }

@@ -8,6 +8,7 @@ public record DashboardStatisticsResponse(
 		Double overallAccuracy,
 		Long totalStudyTimeSeconds,
 		Integer currentLearningStreak,
-		Integer longestLearningStreak
+		Integer longestLearningStreak,
+		Long cardsDueToday
 ) {
 }

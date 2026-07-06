@@ -32,6 +32,25 @@
   margin-top: 2rem;
 }
 
+.dictionary-details__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2rem;
+}
+
+.dictionary-details__section-header .dictionary-details__section-title {
+  margin-top: 0;
+}
+
+.dictionary-details__filters {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
 .dictionary-details__table {
   width: 100%;
 }

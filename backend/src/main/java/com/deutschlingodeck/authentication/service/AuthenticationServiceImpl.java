@@ -14,11 +14,10 @@ import com.deutschlingodeck.authentication.mapper.UserMapper;
 import com.deutschlingodeck.authentication.repository.RefreshTokenRepository;
 import com.deutschlingodeck.authentication.repository.UserRepository;
 import com.deutschlingodeck.common.exception.UnauthorizedException;
+import com.deutschlingodeck.common.security.CurrentUserProvider;
 import com.deutschlingodeck.security.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,18 +33,21 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 	private final PasswordEncoder passwordEncoder;
 	private final JwtTokenProvider jwtTokenProvider;
 	private final UserMapper userMapper;
+	private final CurrentUserProvider currentUserProvider;
 
 	public AuthenticationServiceImpl(
 			UserRepository userRepository,
 			RefreshTokenRepository refreshTokenRepository,
 			PasswordEncoder passwordEncoder,
 			JwtTokenProvider jwtTokenProvider,
-			UserMapper userMapper) {
+			UserMapper userMapper,
+			CurrentUserProvider currentUserProvider) {
 		this.userRepository = userRepository;
 		this.refreshTokenRepository = refreshTokenRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtTokenProvider = jwtTokenProvider;
 		this.userMapper = userMapper;
+		this.currentUserProvider = currentUserProvider;
 	}
 
 	@Override
@@ -100,12 +102,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 	@Override
 	@Transactional
 	public void logout() {
-		refreshTokenRepository.revokeAllActiveForUser(currentUserId());
+		refreshTokenRepository.revokeAllActiveForUser(currentUserProvider.getUserId());
 	}
 
 	@Override
 	public UserResponse getCurrentUser() {
-		User user = userRepository.findById(currentUserId())
+		User user = userRepository.findById(currentUserProvider.getUserId())
 				.orElseThrow(() -> new UnauthorizedException("Authentication is required"));
 		return userMapper.toUserResponse(user);
 	}
@@ -135,14 +137,5 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 		}
 
 		return claims;
-	}
-
-	/** Reads the user id that {@code JwtAuthenticationFilter} placed in the security context. */
-	private Long currentUserId() {
-		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-		if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
-			throw new UnauthorizedException("Authentication is required");
-		}
-		return userId;
 	}
 }

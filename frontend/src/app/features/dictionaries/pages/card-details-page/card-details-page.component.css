@@ -18,3 +18,16 @@
 .card-details__progress {
   margin-bottom: 1rem;
 }
+
+.card-details__edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 32rem;
+}
+
+.card-details__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

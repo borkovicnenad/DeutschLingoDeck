@@ -102,7 +102,9 @@
             <div class="ai-import__success">
               <mat-icon>check_circle</mat-icon>
               <p>{{ aiGeneratedCards()?.length }} AI-suggested cards were added to "{{ aiForm.value.name }}".</p>
-              <a matButton="filled" routerLink="/dictionaries">Go to Dictionaries</a>
+              @if (aiCreatedDictionaryId(); as dictionaryId) {
+                <a matButton="filled" [routerLink]="['/dictionaries', dictionaryId]">View Dictionary</a>
+              }
               <button matButton type="button" (click)="resetAiGeneration()">Generate Another</button>
             </div>
           } @else {
@@ -183,11 +185,19 @@
                 <tr mat-row *matRowDef="let row; columns: aiGeneratedColumns"></tr>
               </table>
 
+              @if (aiAddError()) {
+                <app-error-state [message]="aiAddError()!" [retryable]="true" (retry)="addGeneratedToDictionary()" />
+              }
+
               <div class="ai-import__actions">
-                <button matButton="filled" type="button" [disabled]="aiForm.controls.name.invalid" (click)="addGeneratedToDictionary()">
-                  Add to Dictionary
-                </button>
-                <button matButton type="button" (click)="resetAiGeneration()">Discard</button>
+                @if (aiAdding()) {
+                  <app-loading-spinner label="Adding cards to your dictionary..." />
+                } @else {
+                  <button matButton="filled" type="button" [disabled]="aiForm.controls.name.invalid" (click)="addGeneratedToDictionary()">
+                    Add to Dictionary
+                  </button>
+                  <button matButton type="button" (click)="resetAiGeneration()">Discard</button>
+                }
               </div>
             }
           }

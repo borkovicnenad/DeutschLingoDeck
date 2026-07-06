@@ -31,44 +31,110 @@
         <mat-icon>arrow_back</mat-icon>
         Back to Dictionary
       </a>
+      @if (!editing()) {
+        <button matButton="outlined" type="button" (click)="startEditing()">
+          <mat-icon>edit</mat-icon>
+          Edit
+        </button>
+        <button matButton type="button" (click)="deleteCard()">
+          <mat-icon>delete</mat-icon>
+          Delete
+        </button>
+      }
     </div>
   </app-page-header>
 
-  <dl class="card-details">
-    <dt>Card type</dt>
-    <dd><app-badge [variant]="cardTypeBadgeVariant(card.cardType)">{{ card.cardType }}</app-badge></dd>
-
-    <dt>Primary translation</dt>
-    <dd>{{ card.primaryTranslation }}</dd>
-
-    @if (card.acceptedAnswers?.length) {
-      <dt>Accepted answers</dt>
-      <dd>
-        <mat-chip-set>
-          @for (answer of card.acceptedAnswers; track answer) {
-            <mat-chip>{{ answer }}</mat-chip>
+  @if (editing()) {
+    <form [formGroup]="editForm" (ngSubmit)="saveEditing()" class="card-details__edit-form">
+      <mat-form-field appearance="outline">
+        <mat-label>Card type</mat-label>
+        <mat-select formControlName="cardType">
+          @for (type of cardTypes; track type) {
+            <mat-option [value]="type">{{ type }}</mat-option>
           }
-        </mat-chip-set>
-      </dd>
-    }
+        </mat-select>
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Article (optional)</mat-label>
+        <input matInput formControlName="article" placeholder="der / die / das" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>German word</mat-label>
+        <input matInput formControlName="sourceText" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Translation</mat-label>
+        <input matInput formControlName="primaryTranslation" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Example sentence</mat-label>
+        <textarea matInput formControlName="example" rows="2"></textarea>
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Notes</mat-label>
+        <textarea matInput formControlName="notes" rows="2"></textarea>
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Difficulty (1-5)</mat-label>
+        <input matInput type="number" min="1" max="5" formControlName="difficultyLevel" />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Tags (comma-separated)</mat-label>
+        <input matInput formControlName="tags" />
+      </mat-form-field>
+      <div class="card-details__edit-actions">
+        <button matButton type="button" (click)="cancelEditing()">Cancel</button>
+        <button matButton="filled" type="submit" [disabled]="saving()">Save</button>
+      </div>
+    </form>
+  } @else {
+    <dl class="card-details">
+      <dt>Card type</dt>
+      <dd><app-badge [variant]="cardTypeBadgeVariant(card.cardType)">{{ card.cardType }}</app-badge></dd>
 
-    @if (card.example) {
-      <dt>Example sentence</dt>
-      <dd>{{ card.example }}</dd>
-    }
+      <dt>Primary translation</dt>
+      <dd>{{ card.primaryTranslation }}</dd>
 
-    @if (card.notes) {
-      <dt>Notes</dt>
-      <dd>{{ card.notes }}</dd>
-    }
+      @if (card.acceptedAnswers?.length) {
+        <dt>Accepted answers</dt>
+        <dd>
+          <mat-chip-set>
+            @for (answer of card.acceptedAnswers; track answer) {
+              <mat-chip>{{ answer }}</mat-chip>
+            }
+          </mat-chip-set>
+        </dd>
+      }
 
-    @if (card.difficultyLevel !== null && card.difficultyLevel !== undefined) {
-      <dt>Difficulty</dt>
-      <dd>
-        <app-badge [variant]="difficultyBadgeVariant(card.difficultyLevel)">
-          {{ card.difficultyLevel }} / 5
-        </app-badge>
-      </dd>
-    }
-  </dl>
+      @if (card.tags?.length) {
+        <dt>Tags</dt>
+        <dd>
+          <mat-chip-set>
+            @for (tag of card.tags; track tag) {
+              <mat-chip>{{ tag }}</mat-chip>
+            }
+          </mat-chip-set>
+        </dd>
+      }
+
+      @if (card.example) {
+        <dt>Example sentence</dt>
+        <dd>{{ card.example }}</dd>
+      }
+
+      @if (card.notes) {
+        <dt>Notes</dt>
+        <dd>{{ card.notes }}</dd>
+      }
+
+      @if (card.difficultyLevel !== null && card.difficultyLevel !== undefined) {
+        <dt>Difficulty</dt>
+        <dd>
+          <app-badge [variant]="difficultyBadgeVariant(card.difficultyLevel)">
+            {{ card.difficultyLevel }} / 5
+          </app-badge>
+        </dd>
+      }
+    </dl>
+  }
 }
