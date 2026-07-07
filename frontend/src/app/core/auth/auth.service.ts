@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, catchError, map, of, tap } from 'rxjs';
+import { Observable, catchError, map, of, switchMap, tap } from 'rxjs';
 
 import { User } from '../models/user.model';
 import { AuthApiService, LoginRequest, RegisterRequest } from './auth-api.service';
@@ -63,6 +63,15 @@ export class AuthService {
       tap((user) => this.currentUserSignal.set(user)),
       map(() => true),
       catchError(() => {
+        this.refreshAccessToken().pipe(
+          switchMap(() => this.authApi.me()),
+          tap((user) => this.currentUserSignal.set(user)),
+          map(() => true),
+          catchError(() => {
+            this.clearSession();
+            return of(false);
+          })
+        )
         this.clearSession();
         return of(false);
       }),

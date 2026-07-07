@@ -31,7 +31,7 @@ export const appConfig: ApplicationConfig = {
     provideClientHydration(),
     provideHttpClient(
       withFetch(),
-      withInterceptors([authInterceptor, refreshTokenInterceptor, errorInterceptor]),
+      withInterceptors([authInterceptor, errorInterceptor, refreshTokenInterceptor])
     ),
     { provide: API_BASE_URL, useValue: environment.apiBaseUrl },
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
