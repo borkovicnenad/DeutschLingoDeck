@@ -15,6 +15,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: deutschlingodeck-pgadmin
@@ -57,6 +58,13 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+
+  plantuml:
+    image: plantuml/plantuml-server:jetty
+    container_name: plantuml-server
+    ports:
+      - "8085:8080"
+    restart: unless-stopped
 
 volumes:
   postgres-data:
