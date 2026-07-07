@@ -11,11 +11,7 @@
 @if (error()) {
   <app-inline-alert
     tone="warning"
-    [message]="
-      usingSampleData()
-        ? 'Couldn\'t reach the server — showing a sample dictionary.'
-        : 'Couldn\'t refresh this dictionary — showing the last loaded data.'
-    "
+    message="Couldn't load this dictionary."
     [retryable]="true"
     (retry)="loadDictionary()"
   />

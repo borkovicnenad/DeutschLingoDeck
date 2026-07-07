@@ -8,9 +8,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      # Flyway now owns the schema for the User/RefreshToken entities (see
-      # db/migration). Remaining entities are still created via this
-      # "none" setting until their own migrations are added.
+      # Flyway owns the schema (see db/migration).
       ddl-auto: none
 
 security:

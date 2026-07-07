@@ -16,11 +16,7 @@
 @if (error()) {
   <app-inline-alert
     tone="warning"
-    [message]="
-      usingSampleData()
-        ? 'Couldn\'t reach the server — showing sample game history.'
-        : 'Couldn\'t refresh game history — showing the last loaded data.'
-    "
+    message="Couldn't load game history."
     [retryable]="true"
     (retry)="load()"
   />
@@ -30,15 +26,7 @@
   <mat-progress-bar mode="indeterminate" class="game-history__progress" />
 }
 
-@if (games().length === 0) {
-  <app-empty-state
-    icon="sports_esports"
-    title="No games yet"
-    message="Start a learning session to see your history here."
-  >
-    <a actions routerLink="/game/start">Start a Game</a>
-  </app-empty-state>
-} @else {
+@if (games().length > 0) {
   <table mat-table [dataSource]="games()" class="game-history__table">
     <ng-container matColumnDef="gameId">
       <th mat-header-cell *matHeaderCellDef>Game</th>
@@ -84,4 +72,12 @@
     [pageSizeOptions]="[10, 20, 50]"
     (page)="onPage($event)"
   />
+} @else if (!loading() && !error()) {
+  <app-empty-state
+    icon="sports_esports"
+    title="No games yet"
+    message="Start a learning session to see your history here."
+  >
+    <a actions routerLink="/game/start">Start a Game</a>
+  </app-empty-state>
 }

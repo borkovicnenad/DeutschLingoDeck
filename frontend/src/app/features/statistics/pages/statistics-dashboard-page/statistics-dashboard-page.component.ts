@@ -15,7 +15,6 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
-import { SAMPLE_WEEKLY_ACTIVITY } from '../../../gamification/gamification.sample-data';
 import { WeeklyActivityPoint } from '../../../gamification/models/gamification.model';
 import { GamificationService } from '../../../gamification/services/gamification.service';
 import {
@@ -24,12 +23,6 @@ import {
   DictionaryStatistics,
   LearningHistoryEntry,
 } from '../../models/statistics.model';
-import {
-  SAMPLE_CARD_STATISTICS,
-  SAMPLE_DASHBOARD_STATISTICS,
-  SAMPLE_DICTIONARY_STATISTICS,
-  SAMPLE_LEARNING_HISTORY,
-} from '../../statistics.sample-data';
 import { StatisticsApiService } from '../../services/statistics-api.service';
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -93,32 +86,27 @@ export class StatisticsDashboardPageComponent {
   private readonly statisticsApi = inject(StatisticsApiService);
   private readonly gamificationApi = inject(GamificationService);
 
-  protected readonly weeklyActivity = signal<WeeklyActivityPoint[]>(SAMPLE_WEEKLY_ACTIVITY);
+  protected readonly weeklyActivity = signal<WeeklyActivityPoint[]>([]);
+  protected readonly weeklyActivityError = signal(false);
 
   protected readonly fromDate = signal<string>('');
   protected readonly toDate = signal<string>('');
 
-  protected readonly overview = signal<DashboardStatistics | null>(SAMPLE_DASHBOARD_STATISTICS);
+  protected readonly overview = signal<DashboardStatistics | null>(null);
   protected readonly overviewLoading = signal(false);
   protected readonly overviewError = signal(false);
-  protected readonly overviewUsingSampleData = signal(true);
 
-  protected readonly dictionaryStatistics = signal<DictionaryStatistics[]>(
-    SAMPLE_DICTIONARY_STATISTICS,
-  );
+  protected readonly dictionaryStatistics = signal<DictionaryStatistics[]>([]);
   protected readonly dictionaryStatisticsLoading = signal(false);
   protected readonly dictionaryStatisticsError = signal(false);
-  protected readonly dictionaryStatisticsUsingSampleData = signal(true);
 
-  protected readonly cardStatistics = signal<CardStatistics[]>(SAMPLE_CARD_STATISTICS);
+  protected readonly cardStatistics = signal<CardStatistics[]>([]);
   protected readonly cardStatisticsLoading = signal(false);
   protected readonly cardStatisticsError = signal(false);
-  protected readonly cardStatisticsUsingSampleData = signal(true);
 
-  protected readonly learningHistory = signal<LearningHistoryEntry[]>(SAMPLE_LEARNING_HISTORY);
+  protected readonly learningHistory = signal<LearningHistoryEntry[]>([]);
   protected readonly learningHistoryLoading = signal(false);
   protected readonly learningHistoryError = signal(false);
-  protected readonly learningHistoryUsingSampleData = signal(true);
 
   protected readonly dictionaryColumns = [
     'dictionaryName',
@@ -176,7 +164,15 @@ export class StatisticsDashboardPageComponent {
 
   constructor() {
     this.loadAll();
-    this.gamificationApi.getWeeklyActivity().subscribe((activity) => this.weeklyActivity.set(activity));
+    this.loadWeeklyActivity();
+  }
+
+  protected loadWeeklyActivity(): void {
+    this.weeklyActivityError.set(false);
+    this.gamificationApi.getWeeklyActivity().subscribe({
+      next: (activity) => this.weeklyActivity.set(activity),
+      error: () => this.weeklyActivityError.set(true),
+    });
   }
 
   protected onDictionarySort(sort: Sort): void {
@@ -211,7 +207,6 @@ export class StatisticsDashboardPageComponent {
       .subscribe({
         next: (overview) => {
           this.overview.set(overview);
-          this.overviewUsingSampleData.set(false);
           this.overviewLoading.set(false);
         },
         error: () => {
@@ -227,7 +222,6 @@ export class StatisticsDashboardPageComponent {
     this.statisticsApi.getDictionaryStatistics().subscribe({
       next: (statistics) => {
         this.dictionaryStatistics.set(statistics);
-        this.dictionaryStatisticsUsingSampleData.set(false);
         this.dictionaryStatisticsLoading.set(false);
       },
       error: () => {
@@ -243,7 +237,6 @@ export class StatisticsDashboardPageComponent {
     this.statisticsApi.getCardStatistics().subscribe({
       next: (response) => {
         this.cardStatistics.set(response.content);
-        this.cardStatisticsUsingSampleData.set(false);
         this.cardStatisticsLoading.set(false);
       },
       error: () => {
@@ -261,7 +254,6 @@ export class StatisticsDashboardPageComponent {
       .subscribe({
         next: (response) => {
           this.learningHistory.set(response.content);
-          this.learningHistoryUsingSampleData.set(false);
           this.learningHistoryLoading.set(false);
         },
         error: () => {

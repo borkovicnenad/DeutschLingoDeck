@@ -21,11 +21,7 @@
 @if (state.error()) {
   <app-inline-alert
     tone="warning"
-    [message]="
-      state.usingSampleData()
-        ? 'Couldn\'t reach the server — showing sample dictionaries.'
-        : 'Couldn\'t refresh dictionaries — showing the last loaded data.'
-    "
+    message="Couldn't load dictionaries."
     [retryable]="true"
     (retry)="state.load()"
   />

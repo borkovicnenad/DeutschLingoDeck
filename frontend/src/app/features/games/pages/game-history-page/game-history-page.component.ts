@@ -12,7 +12,6 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { AppError } from '../../../../shared/models/api-error.model';
-import { SAMPLE_GAME_HISTORY } from '../../games.sample-data';
 import { GameStatus } from '../../models/game-status.enum';
 import { GameSummary } from '../../models/game.model';
 import { GameApiService } from '../../services/game-api.service';
@@ -46,13 +45,12 @@ const STATUS_BADGE_VARIANT: Record<GameStatus, BadgeVariant> = {
 export class GameHistoryPageComponent {
   private readonly gameApi = inject(GameApiService);
 
-  protected readonly games = signal<GameSummary[]>(SAMPLE_GAME_HISTORY);
+  protected readonly games = signal<GameSummary[]>([]);
   protected readonly loading = signal(false);
   protected readonly error = signal<AppError | null>(null);
-  protected readonly usingSampleData = signal(true);
   protected readonly page = signal(0);
   protected readonly size = signal(20);
-  protected readonly totalElements = signal(SAMPLE_GAME_HISTORY.length);
+  protected readonly totalElements = signal(0);
   protected readonly statusFilter = signal<GameStatus | ''>('');
 
   protected readonly statuses: GameStatus[] = [
@@ -80,7 +78,6 @@ export class GameHistoryPageComponent {
           this.page.set(response.page);
           this.size.set(response.size);
           this.totalElements.set(response.totalElements);
-          this.usingSampleData.set(false);
           this.loading.set(false);
         },
         error: (error: AppError) => {

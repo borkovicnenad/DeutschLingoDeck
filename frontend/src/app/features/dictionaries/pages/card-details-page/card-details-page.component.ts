@@ -15,7 +15,6 @@ import { InlineAlertComponent } from '../../../../shared/components/inline-alert
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
 import { AppError } from '../../../../shared/models/api-error.model';
-import { SAMPLE_CARD_DETAIL } from '../../dictionaries.sample-data';
 import { CardType } from '../../models/card-type.enum';
 import { CardDetail } from '../../models/card.model';
 import { DictionaryApiService } from '../../services/dictionary-api.service';
@@ -72,10 +71,9 @@ export class CardDetailsPageComponent implements OnInit {
   private readonly dictionaryIdAsNumber = computed(() => Number(this.dictionaryId()));
   private readonly cardIdAsNumber = computed(() => Number(this.cardId()));
 
-  protected readonly card = signal<CardDetail | null>(SAMPLE_CARD_DETAIL);
+  protected readonly card = signal<CardDetail | null>(null);
   protected readonly loading = signal(false);
   protected readonly error = signal<AppError | null>(null);
-  protected readonly usingSampleData = signal(true);
   protected readonly editing = signal(false);
   protected readonly saving = signal(false);
 
@@ -110,7 +108,6 @@ export class CardDetailsPageComponent implements OnInit {
     this.dictionaryApi.getCard(this.dictionaryIdAsNumber(), this.cardIdAsNumber()).subscribe({
       next: (card) => {
         this.card.set(card);
-        this.usingSampleData.set(false);
         this.loading.set(false);
       },
       error: (error: AppError) => {

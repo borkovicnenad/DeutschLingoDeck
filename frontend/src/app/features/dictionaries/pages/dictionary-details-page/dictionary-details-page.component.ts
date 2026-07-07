@@ -21,7 +21,6 @@ import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/
 import { AppError } from '../../../../shared/models/api-error.model';
 import { AiRecommendation } from '../../../ai-assistant/models/ai-assistant.model';
 import { AiAssistantService } from '../../../ai-assistant/services/ai-assistant.service';
-import { SAMPLE_CARDS, SAMPLE_DICTIONARY_DETAIL } from '../../dictionaries.sample-data';
 import { CardType } from '../../models/card-type.enum';
 import { CardFilter, CardFilterStatus, CardSummary } from '../../models/card.model';
 import { DictionaryDetail } from '../../models/dictionary.model';
@@ -73,16 +72,15 @@ export class DictionaryDetailsPageComponent implements OnInit {
   readonly dictionaryId = input.required<string>();
   private readonly dictionaryIdAsNumber = computed(() => Number(this.dictionaryId()));
 
-  protected readonly dictionary = signal<DictionaryDetail | null>(SAMPLE_DICTIONARY_DETAIL);
+  protected readonly dictionary = signal<DictionaryDetail | null>(null);
   protected readonly loading = signal(false);
   protected readonly error = signal<AppError | null>(null);
-  protected readonly usingSampleData = signal(true);
   protected readonly editing = signal(false);
 
-  protected readonly cards = signal<CardSummary[]>(SAMPLE_CARDS);
+  protected readonly cards = signal<CardSummary[]>([]);
   protected readonly cardsLoading = signal(false);
   protected readonly cardsPage = signal(0);
-  protected readonly cardsTotal = signal(SAMPLE_CARDS.length);
+  protected readonly cardsTotal = signal(0);
   protected readonly displayedColumns = ['sourceText', 'primaryTranslation', 'cardType', 'actions'];
 
   protected readonly cardTypes = CARD_TYPES;
@@ -107,10 +105,10 @@ export class DictionaryDetailsPageComponent implements OnInit {
   protected readonly recommendationsError = signal<string | null>(null);
 
   protected readonly editForm = this.formBuilder.nonNullable.group({
-    name: [SAMPLE_DICTIONARY_DETAIL.name, [Validators.required, Validators.maxLength(150)]],
-    description: [SAMPLE_DICTIONARY_DETAIL.description ?? '', [Validators.maxLength(1000)]],
-    sourceLanguage: [SAMPLE_DICTIONARY_DETAIL.sourceLanguage, [Validators.required]],
-    targetLanguage: [SAMPLE_DICTIONARY_DETAIL.targetLanguage, [Validators.required]],
+    name: ['', [Validators.required, Validators.maxLength(150)]],
+    description: ['', [Validators.maxLength(1000)]],
+    sourceLanguage: ['', [Validators.required]],
+    targetLanguage: ['', [Validators.required]],
   });
 
   ngOnInit(): void {
@@ -147,7 +145,6 @@ export class DictionaryDetailsPageComponent implements OnInit {
       next: (dictionary) => {
         this.dictionary.set(dictionary);
         this.editForm.patchValue(dictionary);
-        this.usingSampleData.set(false);
         this.loading.set(false);
       },
       error: (error: AppError) => {

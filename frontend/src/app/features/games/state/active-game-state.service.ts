@@ -1,26 +1,17 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { AppError } from '../../../shared/models/api-error.model';
-import { SAMPLE_ACTIVE_GAME } from '../games.sample-data';
 import { AnswerValidationResponse, Game } from '../models/game.model';
 import { GameApiService } from '../services/game-api.service';
 
-/**
- * Local reactive state for the Active Game page.
- *
- * Starts out showing a static sample game so the page is never empty and is
- * fully navigable before/without a live backend. A successful load() always
- * replaces the sample data with the real game; a failed load() keeps the
- * sample game on screen and only surfaces `error` for a non-blocking notice.
- */
+/** Local reactive state for the Active Game page. */
 @Injectable()
 export class ActiveGameStateService {
   private readonly gameApi = inject(GameApiService);
 
-  private readonly gameSignal = signal<Game | null>(SAMPLE_ACTIVE_GAME);
+  private readonly gameSignal = signal<Game | null>(null);
   private readonly loadingSignal = signal(false);
   private readonly errorSignal = signal<AppError | null>(null);
-  private readonly usingSampleDataSignal = signal(true);
   private readonly submittingSignal = signal(false);
   private readonly lastValidationSignal = signal<AnswerValidationResponse | null>(null);
   private questionStartedAt = Date.now();
@@ -28,7 +19,6 @@ export class ActiveGameStateService {
   readonly game = this.gameSignal.asReadonly();
   readonly loading = this.loadingSignal.asReadonly();
   readonly error = this.errorSignal.asReadonly();
-  readonly usingSampleData = this.usingSampleDataSignal.asReadonly();
   readonly submitting = this.submittingSignal.asReadonly();
   readonly lastValidation = this.lastValidationSignal.asReadonly();
 
@@ -47,7 +37,6 @@ export class ActiveGameStateService {
     this.gameApi.getById(gameId).subscribe({
       next: (game) => {
         this.gameSignal.set(game);
-        this.usingSampleDataSignal.set(false);
         this.loadingSignal.set(false);
         this.questionStartedAt = Date.now();
       },

@@ -16,9 +16,6 @@ import java.util.UUID;
 /**
  * Writes a JSON {@link ErrorResponse} body (instead of the default HTML
  * error page) whenever an unauthenticated request hits a protected endpoint.
- *
- * TODO: this will start firing in practice once JWT authentication is wired
- * up and protected endpoints stop being permitAll.
  */
 @Component
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {

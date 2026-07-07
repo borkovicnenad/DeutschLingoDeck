@@ -8,12 +8,10 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { SAMPLE_DICTIONARIES } from '../../../dictionaries/dictionaries.sample-data';
 import { DictionaryApiService } from '../../../dictionaries/services/dictionary-api.service';
 import { DictionarySummary } from '../../../dictionaries/models/dictionary.model';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { AppError } from '../../../../shared/models/api-error.model';
-import { SAMPLE_ACTIVE_GAME } from '../../games.sample-data';
 import { Game } from '../../models/game.model';
 import { GameApiService } from '../../services/game-api.service';
 
@@ -40,11 +38,11 @@ export class StartGamePageComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
-  protected readonly dictionaries = signal<DictionarySummary[]>(SAMPLE_DICTIONARIES);
+  protected readonly dictionaries = signal<DictionarySummary[]>([]);
   protected readonly loadingDictionaries = signal(false);
   protected readonly starting = signal(false);
   protected readonly startError = signal<AppError | null>(null);
-  protected readonly activeGame = signal<Game | null>(SAMPLE_ACTIVE_GAME);
+  protected readonly activeGame = signal<Game | null>(null);
 
   protected readonly form = this.formBuilder.nonNullable.group({
     dictionaryId: [null as number | null, [Validators.required]],
@@ -68,7 +66,6 @@ export class StartGamePageComponent {
 
     this.gameApi.findActiveGame().subscribe({
       next: (game) => this.activeGame.set(game),
-      // keep showing whichever active-game banner (sample or previous) was already displayed
       error: () => {},
     });
   }

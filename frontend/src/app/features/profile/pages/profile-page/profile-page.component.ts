@@ -8,20 +8,17 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { forkJoin } from 'rxjs';
 
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
+import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { AvatarComponent } from '../../../../shared/components/avatar/avatar.component';
 import { passwordsMatchValidator } from '../../../../shared/utils/password-match.validator';
 import { AppError } from '../../../../shared/models/api-error.model';
 import { AuthService } from '../../../../core/auth/auth.service';
-import {
-  SAMPLE_ACHIEVEMENTS,
-  SAMPLE_LEVEL_PROGRESS,
-} from '../../../gamification/gamification.sample-data';
 import { Achievement, LevelProgress } from '../../../gamification/models/gamification.model';
 import { GamificationService } from '../../../gamification/services/gamification.service';
-import { SAMPLE_PROFILE } from '../../profile.sample-data';
 import { Profile } from '../../models/profile.model';
 import { ProfileApiService } from '../../services/profile-api.service';
 
@@ -39,6 +36,7 @@ import { ProfileApiService } from '../../services/profile-api.service';
     MatTooltipModule,
     PageHeaderComponent,
     InlineAlertComponent,
+    EmptyStateComponent,
     AvatarComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,13 +49,14 @@ export class ProfilePageComponent {
   private readonly formBuilder = inject(FormBuilder);
   private readonly gamificationApi = inject(GamificationService);
 
-  protected readonly profile = signal<Profile | null>(SAMPLE_PROFILE);
+  protected readonly profile = signal<Profile | null>(null);
   protected readonly loading = signal(false);
   protected readonly error = signal<AppError | null>(null);
-  protected readonly usingSampleData = signal(true);
 
-  protected readonly levelProgress = signal<LevelProgress | null>(SAMPLE_LEVEL_PROGRESS);
-  protected readonly achievements = signal<Achievement[]>(SAMPLE_ACHIEVEMENTS);
+  protected readonly levelProgress = signal<LevelProgress | null>(null);
+  protected readonly achievements = signal<Achievement[]>([]);
+  protected readonly gamificationLoading = signal(false);
+  protected readonly gamificationError = signal(false);
 
   protected readonly profileSaving = signal(false);
   protected readonly profileSaved = signal(false);
@@ -68,10 +67,7 @@ export class ProfilePageComponent {
   protected readonly passwordError = signal<string | null>(null);
 
   protected readonly profileForm = this.formBuilder.nonNullable.group({
-    displayName: [
-      SAMPLE_PROFILE.displayName,
-      [Validators.required, Validators.minLength(2), Validators.maxLength(100)],
-    ],
+    displayName: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(100)]],
   });
 
   protected readonly passwordForm = this.formBuilder.nonNullable.group(
@@ -92,9 +88,24 @@ export class ProfilePageComponent {
     return Math.min(100, (progress.currentXp / progress.xpToNextLevel) * 100);
   }
 
-  private loadGamification(): void {
-    this.gamificationApi.getLevelProgress().subscribe((progress) => this.levelProgress.set(progress));
-    this.gamificationApi.getAchievements().subscribe((achievements) => this.achievements.set(achievements));
+  protected loadGamification(): void {
+    this.gamificationLoading.set(true);
+    this.gamificationError.set(false);
+
+    forkJoin({
+      levelProgress: this.gamificationApi.getLevelProgress(),
+      achievements: this.gamificationApi.getAchievements(),
+    }).subscribe({
+      next: ({ levelProgress, achievements }) => {
+        this.levelProgress.set(levelProgress);
+        this.achievements.set(achievements);
+        this.gamificationLoading.set(false);
+      },
+      error: () => {
+        this.gamificationError.set(true);
+        this.gamificationLoading.set(false);
+      },
+    });
   }
 
   protected load(): void {
@@ -105,7 +116,6 @@ export class ProfilePageComponent {
       next: (profile) => {
         this.profile.set(profile);
         this.profileForm.patchValue({ displayName: profile.displayName });
-        this.usingSampleData.set(false);
         this.loading.set(false);
       },
       error: (error: AppError) => {

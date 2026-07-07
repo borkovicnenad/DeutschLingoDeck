@@ -3,11 +3,7 @@
 @if (error()) {
   <app-inline-alert
     tone="warning"
-    [message]="
-      usingSampleData()
-        ? 'Couldn\'t reach the server — showing a sample profile.'
-        : 'Couldn\'t refresh your profile — showing the last loaded data.'
-    "
+    message="Couldn't load your profile."
     [retryable]="true"
     (retry)="load()"
   />
@@ -30,6 +26,15 @@
       </mat-card-content>
     </mat-card>
 
+    @if (gamificationError()) {
+      <app-inline-alert
+        tone="warning"
+        message="Couldn't load your progress."
+        [retryable]="true"
+        (retry)="loadGamification()"
+      />
+    }
+
     @if (levelProgress(); as level) {
       <mat-card appearance="outlined">
         <mat-card-header>
@@ -40,32 +45,52 @@
           <p class="profile__xp">{{ level.currentXp }} / {{ level.xpToNextLevel }} XP</p>
         </mat-card-content>
       </mat-card>
+    } @else if (gamificationLoading()) {
+      <mat-card appearance="outlined">
+        <mat-card-content>
+          <mat-progress-bar mode="indeterminate" />
+        </mat-card-content>
+      </mat-card>
     }
 
-    <mat-card appearance="outlined" class="profile__achievements-card">
-      <mat-card-header>
-        <mat-card-title>Achievements</mat-card-title>
-      </mat-card-header>
-      <mat-card-content>
-        <div class="profile__achievements">
-          @for (achievement of achievements(); track achievement.id) {
-            <div
-              class="profile__achievement"
-              [class.profile__achievement--locked]="!achievement.unlocked"
-              [matTooltip]="achievement.description"
-            >
-              <mat-icon>{{ achievement.unlocked ? achievement.icon : 'lock' }}</mat-icon>
-              <div>
-                <p class="profile__achievement-title">{{ achievement.title }}</p>
-                <p class="profile__achievement-status">
-                  {{ achievement.unlocked ? ('Unlocked ' + (achievement.unlockedAt | date: 'mediumDate')) : 'Locked' }}
-                </p>
-              </div>
+    @if (levelProgress() || gamificationLoading() || achievements().length > 0) {
+      <mat-card appearance="outlined" class="profile__achievements-card">
+        <mat-card-header>
+          <mat-card-title>Achievements</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          @if (achievements().length > 0) {
+            <div class="profile__achievements">
+              @for (achievement of achievements(); track achievement.id) {
+                <div
+                  class="profile__achievement"
+                  [class.profile__achievement--locked]="!achievement.unlocked"
+                  [matTooltip]="achievement.description"
+                >
+                  <mat-icon>{{ achievement.unlocked ? achievement.icon : 'lock' }}</mat-icon>
+                  <div>
+                    <p class="profile__achievement-title">{{ achievement.title }}</p>
+                    <p class="profile__achievement-status">
+                      {{
+                        achievement.unlocked
+                          ? 'Unlocked ' + (achievement.unlockedAt | date: 'mediumDate')
+                          : 'Locked'
+                      }}
+                    </p>
+                  </div>
+                </div>
+              }
             </div>
+          } @else if (!gamificationLoading()) {
+            <app-empty-state
+              icon="emoji_events"
+              title="No achievements yet"
+              message="Play a game to start earning achievements."
+            />
           }
-        </div>
-      </mat-card-content>
-    </mat-card>
+        </mat-card-content>
+      </mat-card>
+    }
 
     <mat-card appearance="outlined">
       <mat-card-header>

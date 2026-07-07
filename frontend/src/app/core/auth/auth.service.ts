@@ -2,17 +2,9 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, catchError, map, of, tap } from 'rxjs';
 
-import { environment } from '../../../environments/environment';
 import { User } from '../models/user.model';
 import { AuthApiService, LoginRequest, RegisterRequest } from './auth-api.service';
 import { TokenStorageService } from './token-storage.service';
-
-/** TEMPORARY DEV-ONLY BYPASS user — see environment.bypassAuth. */
-const DEV_BYPASS_USER: User = {
-  id: 0,
-  email: 'dev@local.test',
-  displayName: 'Dev User',
-};
 
 /**
  * Holds global authentication state (current user, authentication status) and
@@ -63,11 +55,6 @@ export class AuthService {
    * without throwing when no valid session exists.
    */
   restoreSession(): Observable<boolean> {
-    if (environment.bypassAuth) {
-      this.currentUserSignal.set(DEV_BYPASS_USER);
-      return of(true);
-    }
-
     if (!this.tokenStorage.getAccessToken()) {
       return of(false);
     }

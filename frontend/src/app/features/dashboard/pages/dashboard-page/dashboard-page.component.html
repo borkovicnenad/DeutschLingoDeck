@@ -20,11 +20,7 @@
   @if (statisticsError()) {
     <app-inline-alert
       tone="warning"
-      [message]="
-        statisticsUsingSampleData()
-          ? 'Couldn\'t reach the server — showing sample statistics.'
-          : 'Couldn\'t refresh statistics — showing the last loaded data.'
-      "
+      message="Couldn't load statistics."
       [retryable]="true"
       (retry)="loadStatistics()"
     />
@@ -52,6 +48,14 @@
 
 <section class="dashboard__section">
   <h2>Your Progress</h2>
+  @if (gamificationError()) {
+    <app-inline-alert
+      tone="warning"
+      message="Couldn't load your progress."
+      [retryable]="true"
+      (retry)="loadGamification()"
+    />
+  }
   @if (gamificationLoading()) {
     <mat-progress-bar mode="indeterminate" class="dashboard__progress" />
   }
@@ -122,11 +126,7 @@
   @if (dictionariesError()) {
     <app-inline-alert
       tone="warning"
-      [message]="
-        dictionariesUsingSampleData()
-          ? 'Couldn\'t reach the server — showing sample dictionaries.'
-          : 'Couldn\'t refresh dictionaries — showing the last loaded data.'
-      "
+      message="Couldn't load dictionaries."
       [retryable]="true"
       (retry)="loadDictionaries()"
     />
@@ -134,15 +134,7 @@
   @if (dictionariesLoading()) {
     <mat-progress-bar mode="indeterminate" class="dashboard__progress" />
   }
-  @if (dictionaries().length === 0) {
-    <app-empty-state
-      icon="menu_book"
-      title="No dictionaries yet"
-      message="Import your first Excel dictionary to start learning."
-    >
-      <a actions matButton="filled" routerLink="/dictionaries/import">Import Dictionary</a>
-    </app-empty-state>
-  } @else {
+  @if (dictionaries().length > 0) {
     <div class="dashboard__dictionaries">
       @for (dictionary of dictionaries(); track dictionary.id) {
         <mat-card appearance="outlined">
@@ -160,5 +152,13 @@
       }
     </div>
     <a routerLink="/dictionaries">View all dictionaries</a>
+  } @else if (!dictionariesLoading() && !dictionariesError()) {
+    <app-empty-state
+      icon="menu_book"
+      title="No dictionaries yet"
+      message="Import your first Excel dictionary to start learning."
+    >
+      <a actions matButton="filled" routerLink="/dictionaries/import">Import Dictionary</a>
+    </app-empty-state>
   }
 </section>

@@ -8,7 +8,6 @@ import { InlineAlertComponent } from '../../../../shared/components/inline-alert
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
 import { AppError } from '../../../../shared/models/api-error.model';
-import { SAMPLE_GAME_SUMMARY } from '../../games.sample-data';
 import { GameSummary } from '../../models/game.model';
 import { GameApiService } from '../../services/game-api.service';
 
@@ -34,10 +33,9 @@ export class GameSummaryPageComponent implements OnInit {
   readonly gameId = input.required<string>();
   private readonly gameIdAsNumber = computed(() => Number(this.gameId()));
 
-  protected readonly summary = signal<GameSummary | null>(SAMPLE_GAME_SUMMARY);
+  protected readonly summary = signal<GameSummary | null>(null);
   protected readonly loading = signal(false);
   protected readonly error = signal<AppError | null>(null);
-  protected readonly usingSampleData = signal(true);
 
   ngOnInit(): void {
     this.load();
@@ -50,7 +48,6 @@ export class GameSummaryPageComponent implements OnInit {
     this.gameApi.getSummary(this.gameIdAsNumber()).subscribe({
       next: (summary) => {
         this.summary.set(summary);
-        this.usingSampleData.set(false);
         this.loading.set(false);
       },
       error: (error: AppError) => {

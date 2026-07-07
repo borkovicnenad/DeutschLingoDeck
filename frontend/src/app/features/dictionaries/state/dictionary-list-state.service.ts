@@ -2,7 +2,6 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Sort } from '@angular/material/sort';
 
 import { AppError } from '../../../shared/models/api-error.model';
-import { SAMPLE_DICTIONARIES } from '../dictionaries.sample-data';
 import { DictionarySummary } from '../models/dictionary.model';
 import { DictionaryApiService } from '../services/dictionary-api.service';
 
@@ -13,32 +12,22 @@ function compareValues(a: unknown, b: unknown): number {
   return String(a).localeCompare(String(b));
 }
 
-/**
- * Local reactive state for the Dictionary List page.
- *
- * Starts out showing static sample dictionaries so the page is never empty
- * and is fully navigable before/without a live backend. A successful load()
- * always replaces the sample data with the real response (including a
- * genuinely empty list); a failed load() keeps the sample data on screen and
- * only surfaces `error` for a non-blocking notice.
- */
+/** Local reactive state for the Dictionary List page. */
 @Injectable()
 export class DictionaryListStateService {
   private readonly dictionaryApi = inject(DictionaryApiService);
 
-  private readonly dictionariesSignal = signal<DictionarySummary[]>(SAMPLE_DICTIONARIES);
+  private readonly dictionariesSignal = signal<DictionarySummary[]>([]);
   private readonly loadingSignal = signal(false);
   private readonly errorSignal = signal<AppError | null>(null);
-  private readonly usingSampleDataSignal = signal(true);
   private readonly pageSignal = signal(0);
   private readonly sizeSignal = signal(20);
-  private readonly totalElementsSignal = signal(SAMPLE_DICTIONARIES.length);
+  private readonly totalElementsSignal = signal(0);
   private readonly searchTermSignal = signal('');
   private readonly sortSignal = signal<Sort>({ active: '', direction: '' });
 
   readonly loading = this.loadingSignal.asReadonly();
   readonly error = this.errorSignal.asReadonly();
-  readonly usingSampleData = this.usingSampleDataSignal.asReadonly();
   readonly page = this.pageSignal.asReadonly();
   readonly size = this.sizeSignal.asReadonly();
   readonly totalElements = this.totalElementsSignal.asReadonly();
@@ -85,7 +74,6 @@ export class DictionaryListStateService {
         this.pageSignal.set(response.page);
         this.sizeSignal.set(response.size);
         this.totalElementsSignal.set(response.totalElements);
-        this.usingSampleDataSignal.set(false);
         this.loadingSignal.set(false);
       },
       error: (error: AppError) => {
