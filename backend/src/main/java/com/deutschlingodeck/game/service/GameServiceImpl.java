@@ -13,6 +13,7 @@ import com.deutschlingodeck.dictionary.entity.Dictionary;
 import com.deutschlingodeck.dictionary.repository.CardRepository;
 import com.deutschlingodeck.dictionary.repository.DictionaryRepository;
 import com.deutschlingodeck.game.dto.AnswerValidationResponse;
+import com.deutschlingodeck.game.dto.CardRevealResponse;
 import com.deutschlingodeck.game.dto.CreateGameRequest;
 import com.deutschlingodeck.game.dto.CurrentCardResponse;
 import com.deutschlingodeck.game.dto.GameResponse;
@@ -48,6 +49,9 @@ public class GameServiceImpl implements GameService {
 
 	/** Cap on how many cards a single game deals, even if more are due. */
 	private static final int SESSION_CARD_LIMIT = 20;
+
+	/** The language a card's {@code article}/{@code sourceText} are always recorded in. */
+	private static final String GERMAN_LANGUAGE = "de";
 
 	private final GameRepository gameRepository;
 	private final GameAnswerRepository gameAnswerRepository;
@@ -147,7 +151,8 @@ public class GameServiceImpl implements GameService {
 		Card card = cardRepository.findById(request.cardId())
 				.orElseThrow(() -> ResourceNotFoundException.of("Card", request.cardId()));
 
-		ValidationResult result = answerValidator.validate(card, request.answer());
+		List<String> expected = expectedAnswers(card);
+		ValidationResult result = answerValidator.validate(expected, card.getCardType(), request.answer());
 		boolean correct = result == ValidationResult.CORRECT;
 		OffsetDateTime now = OffsetDateTime.now();
 
@@ -166,12 +171,11 @@ public class GameServiceImpl implements GameService {
 
 		gamificationService.recordAnswer(userId, correct, now);
 
-		String expectedAnswer = card.getAcceptedAnswers() != null && !card.getAcceptedAnswers().isEmpty()
-				? card.getAcceptedAnswers().get(0)
-				: card.getPrimaryTranslation();
+		String expectedAnswer = expected.isEmpty() ? null : expected.get(0);
 
 		return new AnswerValidationResponse(
-				result, correct, request.answer(), expectedAnswer, feedbackMessage(result), resolveCurrentCard(game));
+				result, correct, request.answer(), expectedAnswer, feedbackMessage(result),
+				gameMapper.toCardRevealResponse(card), resolveCurrentCard(game));
 	}
 
 	@Override
@@ -266,7 +270,33 @@ public class GameServiceImpl implements GameService {
 		}
 		Long cardId = deckCardIds.get(index);
 		Card card = cardRepository.findById(cardId).orElseThrow(() -> ResourceNotFoundException.of("Card", cardId));
-		return gameMapper.toCurrentCardResponse(card);
+
+		if (isGermanRecall(card.getDictionary())) {
+			return new CurrentCardResponse(
+					card.getId(), card.getCardType(), null, null, card.getPrimaryTranslation(), null, null);
+		}
+		return new CurrentCardResponse(
+				card.getId(), card.getCardType(), card.getArticle(), card.getSourceText(), null,
+				card.getExample(), card.getGrammarInfo());
+	}
+
+	/** {@code true} when this dictionary's direction is "recall German" (translation shown first). */
+	private boolean isGermanRecall(Dictionary dictionary) {
+		return !GERMAN_LANGUAGE.equalsIgnoreCase(dictionary.getSourceLanguage());
+	}
+
+	/** The answer(s) that count as correct for this card, given its dictionary's learning direction. */
+	private List<String> expectedAnswers(Card card) {
+		if (isGermanRecall(card.getDictionary())) {
+			String germanForm = card.getArticle() != null
+					? card.getArticle() + " " + card.getSourceText()
+					: card.getSourceText();
+			return List.of(germanForm);
+		}
+		if (card.getAcceptedAnswers() != null && !card.getAcceptedAnswers().isEmpty()) {
+			return card.getAcceptedAnswers();
+		}
+		return card.getPrimaryTranslation() != null ? List.of(card.getPrimaryTranslation()) : List.of();
 	}
 
 	private GameResponse toGameResponse(Game game) {

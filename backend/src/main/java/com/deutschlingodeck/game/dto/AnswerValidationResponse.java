@@ -6,6 +6,7 @@ public record AnswerValidationResponse(
 		String givenAnswer,
 		String expectedAnswer,
 		String message,
+		CardRevealResponse revealedCard,
 		CurrentCardResponse nextCard
 ) {
 }

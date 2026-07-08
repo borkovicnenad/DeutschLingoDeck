@@ -52,7 +52,7 @@ public class Card {
 
 	private String example;
 
-	private String notes;
+	private String grammarInfo;
 
 	private Integer difficultyLevel;
 
@@ -137,12 +137,12 @@ public class Card {
 		this.example = example;
 	}
 
-	public String getNotes() {
-		return notes;
+	public String getGrammarInfo() {
+		return grammarInfo;
 	}
 
-	public void setNotes(String notes) {
-		this.notes = notes;
+	public void setGrammarInfo(String grammarInfo) {
+		this.grammarInfo = grammarInfo;
 	}
 
 	public Integer getDifficultyLevel() {

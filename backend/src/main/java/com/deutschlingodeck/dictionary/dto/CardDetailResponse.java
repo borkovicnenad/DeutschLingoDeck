@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * Flattened form of {@code CardDetailResponse} (allOf
- * {@code CardSummaryResponse} + example/notes/etc.) from the OpenAPI spec.
+ * {@code CardSummaryResponse} + example/grammarInfo/etc.) from the OpenAPI spec.
  */
 public record CardDetailResponse(
 		Long id,
@@ -15,7 +15,7 @@ public record CardDetailResponse(
 		Integer position,
 		List<String> acceptedAnswers,
 		String example,
-		String notes,
+		String grammarInfo,
 		Integer difficultyLevel,
 		List<String> tags
 ) {

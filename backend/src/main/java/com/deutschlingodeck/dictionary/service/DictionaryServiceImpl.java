@@ -140,7 +140,7 @@ public class DictionaryServiceImpl implements DictionaryService {
 		card.setPrimaryTranslation(request.primaryTranslation());
 		card.setAcceptedAnswers(request.acceptedAnswers());
 		card.setExample(request.example());
-		card.setNotes(request.notes());
+		card.setGrammarInfo(request.grammarInfo());
 		card.setDifficultyLevel(request.difficultyLevel());
 		card.setTags(request.tags());
 
@@ -159,7 +159,7 @@ public class DictionaryServiceImpl implements DictionaryService {
 		card.setPrimaryTranslation(request.primaryTranslation());
 		card.setAcceptedAnswers(request.acceptedAnswers());
 		card.setExample(request.example());
-		card.setNotes(request.notes());
+		card.setGrammarInfo(request.grammarInfo());
 		card.setDifficultyLevel(request.difficultyLevel());
 		card.setTags(request.tags());
 

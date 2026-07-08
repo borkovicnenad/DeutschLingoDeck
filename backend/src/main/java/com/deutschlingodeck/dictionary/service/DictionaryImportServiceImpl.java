@@ -30,11 +30,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Parses an uploaded {@code .xlsx}/{@code .xls}/{@code .csv} vocabulary file into
  * {@link Card}s. Both formats are normalized into the same {@code List<Map<String,String>>}
  * row shape (keyed by canonical field name) so row validation only has to be written once.
+ *
+ * <p>Two layouts are supported: a header-row file (any column order, header text matched via
+ * {@link #HEADER_SYNONYMS}), or a headerless file whose columns are fixed positionally as
+ * {@link #POSITIONAL_FIELDS} (article, word, grammar info, example, translation, difficulty,
+ * tags) - the layout used by {@code docs/BusinessDict-dev-with-examples.xlsx}. A file is treated
+ * as headerless when its first row contains none of the recognized canonical field names.
  */
 @Service
 public class DictionaryImportServiceImpl implements DictionaryImportService {
@@ -54,12 +61,20 @@ public class DictionaryImportServiceImpl implements DictionaryImportService {
 			Map.entry("level", "difficultyLevel"),
 			Map.entry("tags", "tags"),
 			Map.entry("tag", "tags"),
-			Map.entry("notes", "notes"),
-			Map.entry("note", "notes"),
+			Map.entry("grammarinfo", "grammarInfo"),
+			Map.entry("grammar", "grammarInfo"),
+			Map.entry("notes", "grammarInfo"),
+			Map.entry("note", "grammarInfo"),
 			Map.entry("article", "article"),
 			Map.entry("type", "cardType"),
 			Map.entry("cardtype", "cardType")
 	);
+
+	private static final Set<String> CANONICAL_FIELDS = Set.copyOf(HEADER_SYNONYMS.values());
+
+	/** Column order (A-G) for a headerless business-dictionary-style import file. */
+	private static final List<String> POSITIONAL_FIELDS = List.of(
+			"article", "sourceText", "grammarInfo", "example", "primaryTranslation", "difficultyLevel", "tags");
 
 	private final DictionaryRepository dictionaryRepository;
 	private final CardRepository cardRepository;
@@ -135,7 +150,7 @@ public class DictionaryImportServiceImpl implements DictionaryImportService {
 			card.setPrimaryTranslation(trimToNull(row.get("primaryTranslation")));
 			card.setArticle(trimToNull(row.get("article")));
 			card.setExample(trimToNull(row.get("example")));
-			card.setNotes(trimToNull(row.get("notes")));
+			card.setGrammarInfo(trimToNull(row.get("grammarInfo")));
 
 			String translation = trimToNull(row.get("primaryTranslation"));
 			if (translation != null) {
@@ -206,18 +221,23 @@ public class DictionaryImportServiceImpl implements DictionaryImportService {
 			Sheet sheet = workbook.getSheetAt(0);
 			DataFormatter formatter = new DataFormatter();
 
-			Row headerRow = sheet.getRow(sheet.getFirstRowNum());
-			if (headerRow == null) {
+			Row firstRow = sheet.getRow(sheet.getFirstRowNum());
+			if (firstRow == null) {
 				return List.of();
 			}
 
-			List<String> headers = new ArrayList<>();
-			for (Cell cell : headerRow) {
-				headers.add(normalizeHeader(formatter.formatCellValue(cell)));
+			List<String> rawFirstRow = new ArrayList<>();
+			for (Cell cell : firstRow) {
+				rawFirstRow.add(formatter.formatCellValue(cell));
 			}
+			boolean looksLikeHeader = looksLikeHeaderRow(rawFirstRow);
+			List<String> headers = looksLikeHeader
+					? rawFirstRow.stream().map(this::normalizeHeader).toList()
+					: POSITIONAL_FIELDS;
+			int firstDataRowNum = looksLikeHeader ? sheet.getFirstRowNum() + 1 : sheet.getFirstRowNum();
 
 			List<Map<String, String>> rows = new ArrayList<>();
-			for (int r = sheet.getFirstRowNum() + 1; r <= sheet.getLastRowNum(); r++) {
+			for (int r = firstDataRowNum; r <= sheet.getLastRowNum(); r++) {
 				Row row = sheet.getRow(r);
 				if (row == null) {
 					continue;
@@ -242,27 +262,42 @@ public class DictionaryImportServiceImpl implements DictionaryImportService {
 
 	private List<Map<String, String>> parseCsv(InputStream inputStream) throws IOException {
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-			String headerLine = reader.readLine();
-			if (headerLine == null) {
+			String firstLine = reader.readLine();
+			if (firstLine == null) {
 				return List.of();
 			}
-			List<String> headers = splitCsvLine(headerLine).stream().map(this::normalizeHeader).toList();
+			List<String> rawFirstRow = splitCsvLine(firstLine);
+			boolean looksLikeHeader = looksLikeHeaderRow(rawFirstRow);
+			List<String> headers = looksLikeHeader
+					? rawFirstRow.stream().map(this::normalizeHeader).toList()
+					: POSITIONAL_FIELDS;
 
 			List<Map<String, String>> rows = new ArrayList<>();
+			if (!looksLikeHeader) {
+				rows.add(toRow(headers, rawFirstRow));
+			}
 			String line;
 			while ((line = reader.readLine()) != null) {
 				if (line.isBlank()) {
 					continue;
 				}
-				List<String> values = splitCsvLine(line);
-				Map<String, String> row = new LinkedHashMap<>();
-				for (int i = 0; i < headers.size(); i++) {
-					row.put(headers.get(i), i < values.size() ? values.get(i) : "");
-				}
-				rows.add(row);
+				rows.add(toRow(headers, splitCsvLine(line)));
 			}
 			return rows;
 		}
+	}
+
+	/** A file is headerless when its first row matches none of the recognized canonical field names. */
+	private boolean looksLikeHeaderRow(List<String> rawFirstRow) {
+		return rawFirstRow.stream().map(this::normalizeHeader).anyMatch(CANONICAL_FIELDS::contains);
+	}
+
+	private Map<String, String> toRow(List<String> headers, List<String> values) {
+		Map<String, String> row = new LinkedHashMap<>();
+		for (int i = 0; i < headers.size(); i++) {
+			row.put(headers.get(i), i < values.size() ? values.get(i) : "");
+		}
+		return row;
 	}
 
 	/** Minimal CSV field splitter: comma-separated, double-quoted fields with {@code ""} escaping. */

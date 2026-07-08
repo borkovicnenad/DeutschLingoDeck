@@ -71,6 +71,31 @@ class DictionaryImportServiceTest {
 	}
 
 	@Test
+	void importDictionary_parsesHeaderlessPositionalRows() {
+		User user = new User("user@example.com", "hash", "User");
+		ReflectionTestUtils.setField(user, "id", 1L);
+		when(userRepository.getReferenceById(1L)).thenReturn(user);
+		when(dictionaryRepository.save(any(Dictionary.class))).thenAnswer(invocation -> {
+			Dictionary dictionary = invocation.getArgument(0);
+			ReflectionTestUtils.setField(dictionary, "id", 20L);
+			return dictionary;
+		});
+		when(cardRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		// No header row - columns are fixed: article, word, grammar info, example, translation, difficulty, tags.
+		String csv = """
+				,abhängen von,"Er hängt von ... ab / Er hing von ... ab.",Der Erfolg hängt davon ab.,ovisiti o,,
+				die,Voraussetzung,"<-, -en>",Dieser Voraussetzung spielt eine wichtige Rolle.,preduvjet,2,business
+				""";
+		MockMultipartFile file = new MockMultipartFile("file", "business-dict.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+		DictionaryImportRequest request = new DictionaryImportRequest(file, "Business", null, "de", "hr");
+
+		DictionaryImportResponse response = importService.importDictionary(1L, request);
+
+		assertThat(response.importedCards()).isEqualTo(2);
+	}
+
+	@Test
 	void importDictionary_rejectsUnsupportedFileType() {
 		MockMultipartFile file = new MockMultipartFile("file", "vocab.pdf", "application/pdf", new byte[] {1, 2, 3});
 		DictionaryImportRequest request = new DictionaryImportRequest(file, "Animals", null, "hr", "de");

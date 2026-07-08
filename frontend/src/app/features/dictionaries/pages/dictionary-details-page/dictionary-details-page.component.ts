@@ -95,7 +95,7 @@ export class DictionaryDetailsPageComponent implements OnInit {
     sourceText: ['', [Validators.required, Validators.maxLength(255)]],
     primaryTranslation: ['', [Validators.maxLength(255)]],
     example: ['', [Validators.maxLength(1000)]],
-    notes: ['', [Validators.maxLength(1000)]],
+    grammarInfo: ['', [Validators.maxLength(1000)]],
     difficultyLevel: [null as number | null],
     tags: [''],
   });
@@ -207,7 +207,7 @@ export class DictionaryDetailsPageComponent implements OnInit {
         primaryTranslation: values.primaryTranslation || undefined,
         acceptedAnswers: values.primaryTranslation ? [values.primaryTranslation] : undefined,
         example: values.example || undefined,
-        notes: values.notes || undefined,
+        grammarInfo: values.grammarInfo || undefined,
         difficultyLevel: values.difficultyLevel ?? undefined,
         tags: this.splitTags(values.tags),
       })

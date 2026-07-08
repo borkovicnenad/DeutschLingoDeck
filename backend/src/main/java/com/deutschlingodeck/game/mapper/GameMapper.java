@@ -2,7 +2,7 @@ package com.deutschlingodeck.game.mapper;
 
 import com.deutschlingodeck.common.mapper.MapStructConfig;
 import com.deutschlingodeck.dictionary.entity.Card;
-import com.deutschlingodeck.game.dto.CurrentCardResponse;
+import com.deutschlingodeck.game.dto.CardRevealResponse;
 import com.deutschlingodeck.game.dto.GameResponse;
 import com.deutschlingodeck.game.dto.GameSummaryResponse;
 import com.deutschlingodeck.game.entity.Game;
@@ -14,7 +14,8 @@ import org.mapstruct.Mapping;
  * {@code durationSeconds} / {@code averageResponseTimeMs} (on
  * {@code GameSummaryResponse}) are derived values with no matching entity
  * field; the service layer computes and sets them once the game engine is
- * implemented.
+ * implemented. {@code CurrentCardResponse} is direction-redacted and built by
+ * hand in {@code GameServiceImpl} rather than mapped here.
  */
 @Mapper(config = MapStructConfig.class)
 public interface GameMapper {
@@ -23,7 +24,7 @@ public interface GameMapper {
 	@Mapping(target = "currentCard", ignore = true)
 	GameResponse toGameResponse(Game game);
 
-	CurrentCardResponse toCurrentCardResponse(Card card);
+	CardRevealResponse toCardRevealResponse(Card card);
 
 	@Mapping(target = "gameId", source = "id")
 	@Mapping(target = "accuracy", ignore = true)

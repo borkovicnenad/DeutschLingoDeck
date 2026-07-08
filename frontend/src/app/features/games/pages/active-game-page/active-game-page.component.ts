@@ -13,6 +13,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatChipsModule } from '@angular/material/chips';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -23,6 +24,7 @@ import { map, timer } from 'rxjs';
 import { BreadcrumbsComponent } from '../../../../shared/components/breadcrumbs/breadcrumbs.component';
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
+import { questionView as buildQuestionView, revealView as buildRevealView } from '../../models/card-presentation.util';
 import { GameApiService } from '../../services/game-api.service';
 import { ActiveGameStateService } from '../../state/active-game-state.service';
 
@@ -32,6 +34,7 @@ import { ActiveGameStateService } from '../../state/active-game-state.service';
     ReactiveFormsModule,
     MatButtonModule,
     MatCardModule,
+    MatChipsModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
@@ -64,6 +67,17 @@ export class ActiveGamePageComponent implements OnInit {
   );
 
   protected readonly finishing = signal(false);
+
+  protected readonly question = computed(() => {
+    const card = this.state.game()?.currentCard;
+    return card ? buildQuestionView(card) : null;
+  });
+
+  protected readonly reveal = computed(() => {
+    const card = this.state.game()?.currentCard;
+    const revealedCard = this.state.lastValidation()?.revealedCard;
+    return card && revealedCard ? buildRevealView(card, revealedCard) : null;
+  });
 
   private readonly continueButton = viewChild<HTMLButtonElement>('continueButton');
 

@@ -12,7 +12,7 @@ export interface CardSummary {
 export interface CardDetail extends CardSummary {
   acceptedAnswers?: string[];
   example?: string | null;
-  notes?: string | null;
+  grammarInfo?: string | null;
   difficultyLevel?: number | null;
   tags?: string[];
 }
@@ -24,7 +24,7 @@ export interface CardRequest {
   primaryTranslation?: string;
   acceptedAnswers?: string[];
   example?: string | null;
-  notes?: string | null;
+  grammarInfo?: string | null;
   difficultyLevel?: number | null;
   tags?: string[];
 }

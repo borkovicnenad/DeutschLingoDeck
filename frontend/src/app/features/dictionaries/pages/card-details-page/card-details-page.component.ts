@@ -84,7 +84,7 @@ export class CardDetailsPageComponent implements OnInit {
     sourceText: ['', [Validators.required, Validators.maxLength(255)]],
     primaryTranslation: ['', [Validators.maxLength(255)]],
     example: ['', [Validators.maxLength(1000)]],
-    notes: ['', [Validators.maxLength(1000)]],
+    grammarInfo: ['', [Validators.maxLength(1000)]],
     difficultyLevel: [null as number | null],
     tags: [''],
   });
@@ -128,7 +128,7 @@ export class CardDetailsPageComponent implements OnInit {
       sourceText: card.sourceText,
       primaryTranslation: card.primaryTranslation ?? '',
       example: card.example ?? '',
-      notes: card.notes ?? '',
+      grammarInfo: card.grammarInfo ?? '',
       difficultyLevel: card.difficultyLevel ?? null,
       tags: (card.tags ?? []).join(', '),
     });
@@ -156,7 +156,7 @@ export class CardDetailsPageComponent implements OnInit {
         primaryTranslation: values.primaryTranslation || undefined,
         acceptedAnswers: values.primaryTranslation ? [values.primaryTranslation] : undefined,
         example: values.example || undefined,
-        notes: values.notes || undefined,
+        grammarInfo: values.grammarInfo || undefined,
         difficultyLevel: values.difficultyLevel ?? undefined,
         tags: this.splitTags(values.tags),
       })

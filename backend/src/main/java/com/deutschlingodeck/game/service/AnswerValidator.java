@@ -1,7 +1,6 @@
 package com.deutschlingodeck.game.service;
 
 import com.deutschlingodeck.dictionary.dto.CardType;
-import com.deutschlingodeck.dictionary.entity.Card;
 import com.deutschlingodeck.game.dto.ValidationResult;
 import org.springframework.stereotype.Component;
 
@@ -10,24 +9,24 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Classifies a typed answer against a card's accepted answers. This is a heuristic MVP
+ * Classifies a typed answer against a list of accepted answers. This is a heuristic MVP
  * classifier (exact match, article-only mismatch, small edit-distance typo, word-count
  * mismatch, substring partial match) - not a linguistically complete grader, but consistent
  * and good enough to drive spaced-repetition scheduling and user feedback.
+ *
+ * <p>The caller decides what "accepted" means for the card's learning direction (the
+ * translation(s) when producing a translation, the German word when recalling German), so
+ * this class stays agnostic of {@code Card}/direction.
  */
 @Component
 public class AnswerValidator {
 
 	private static final Set<String> GERMAN_ARTICLES = Set.of("der", "die", "das", "den", "dem", "des");
 
-	public ValidationResult validate(Card card, String givenAnswer) {
+	public ValidationResult validate(List<String> accepted, CardType cardType, String givenAnswer) {
 		String normalizedGiven = normalize(givenAnswer);
-		List<String> accepted = card.getAcceptedAnswers();
 		if (accepted == null || accepted.isEmpty()) {
-			String translation = card.getPrimaryTranslation();
-			return translation != null && normalize(translation).equals(normalizedGiven)
-					? ValidationResult.CORRECT
-					: ValidationResult.WRONG_TRANSLATION;
+			return ValidationResult.WRONG_TRANSLATION;
 		}
 
 		for (String candidate : accepted) {
@@ -59,7 +58,7 @@ public class AnswerValidator {
 			String normalizedCandidate = normalize(candidate);
 			if (!normalizedGiven.isEmpty()
 					&& (normalizedCandidate.contains(normalizedGiven) || normalizedGiven.contains(normalizedCandidate))) {
-				return card.getCardType() == CardType.SENTENCE ? ValidationResult.WRONG_SENTENCE : ValidationResult.PARTIALLY_CORRECT;
+				return cardType == CardType.SENTENCE ? ValidationResult.WRONG_SENTENCE : ValidationResult.PARTIALLY_CORRECT;
 			}
 		}
 

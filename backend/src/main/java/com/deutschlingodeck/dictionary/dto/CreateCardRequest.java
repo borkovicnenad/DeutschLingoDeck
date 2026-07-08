@@ -15,7 +15,7 @@ public record CreateCardRequest(
 		@Size(max = 255) String primaryTranslation,
 		List<String> acceptedAnswers,
 		@Size(max = 1000) String example,
-		@Size(max = 1000) String notes,
+		@Size(max = 1000) String grammarInfo,
 		@Min(1) @Max(5) Integer difficultyLevel,
 		List<String> tags
 ) {

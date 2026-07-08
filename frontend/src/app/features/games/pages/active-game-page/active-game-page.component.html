@@ -30,11 +30,14 @@
   @if (game.currentCard; as card) {
     <mat-card appearance="outlined" class="active-game__card">
       <mat-card-content>
-        <p class="active-game__prompt">
-          {{ card.article ? card.article + ' ' : '' }}{{ card.sourceText }}
-        </p>
-        @if (card.example) {
-          <p class="active-game__example">{{ card.example }}</p>
+        @if (question(); as q) {
+          <p class="active-game__prompt">{{ q.primary }}</p>
+          @if (q.example) {
+            <p class="active-game__example">{{ q.example }}</p>
+          }
+          @if (q.grammarInfo) {
+            <p class="active-game__grammar">Grammar: {{ q.grammarInfo }}</p>
+          }
         }
 
         @if (state.lastValidation(); as validation) {
@@ -46,8 +49,24 @@
             (keydown.enter)="onFeedbackKeydownEnter($event)"
           >
             <p><strong>{{ validation.correct ? 'Correct!' : validation.result }}</strong></p>
-            @if (!validation.correct) {
-              <p>Expected: {{ validation.expectedAnswer }}</p>
+            @if (reveal(); as r) {
+              <p class="active-game__reveal-primary">{{ r.primary }}</p>
+              @if (r.example) {
+                <p class="active-game__example">{{ r.example }}</p>
+              }
+              @if (r.grammarInfo) {
+                <p class="active-game__grammar">Grammar: {{ r.grammarInfo }}</p>
+              }
+              @if (r.difficultyLevel !== null && r.difficultyLevel !== undefined) {
+                <p>Difficulty: {{ r.difficultyLevel }} / 5</p>
+              }
+              @if (r.tags?.length) {
+                <mat-chip-set>
+                  @for (tag of r.tags; track tag) {
+                    <mat-chip>{{ tag }}</mat-chip>
+                  }
+                </mat-chip-set>
+              }
             }
             @if (validation.message) {
               <p>{{ validation.message }}</p>
