@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  afterRenderEffect,
+  computed,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -55,6 +65,17 @@ export class ActiveGamePageComponent implements OnInit {
 
   protected readonly finishing = signal(false);
 
+  private readonly continueButton = viewChild<HTMLButtonElement>('continueButton');
+
+  constructor() {
+    // Auto-focus Continue when it appears so native Enter-on-button already matches a click.
+    afterRenderEffect(() => {
+      if (this.state.lastValidation()) {
+        this.continueButton()?.focus();
+      }
+    });
+  }
+
   ngOnInit(): void {
     this.state.load(this.gameIdAsNumber());
   }
@@ -80,6 +101,12 @@ export class ActiveGamePageComponent implements OnInit {
   protected continue(): void {
     this.state.continueToNextCard();
     this.answerForm.reset({ answer: '' });
+  }
+
+  protected onFeedbackKeydownEnter(event: Event): void {
+    // preventDefault stops the focused button's native Enter-triggers-click, avoiding a double continue().
+    event.preventDefault();
+    this.continue();
   }
 
   protected finishGame(): void {

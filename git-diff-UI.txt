@@ -1,0 +1,138 @@
+diff --git a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.html b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.html
+index 5f72cce..1a4534e 100644
+--- a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.html
++++ b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.html
+@@ -43,6 +43,7 @@
+             [class.active-game__feedback--correct]="validation.correct"
+             [class.active-game__feedback--incorrect]="!validation.correct"
+             role="status"
++            (keydown.enter)="onFeedbackKeydownEnter($event)"
+           >
+             <p><strong>{{ validation.correct ? 'Correct!' : validation.result }}</strong></p>
+             @if (!validation.correct) {
+@@ -51,7 +52,9 @@
+             @if (validation.message) {
+               <p>{{ validation.message }}</p>
+             }
+-            <button matButton="filled" type="button" (click)="continue()">Continue</button>
++            <button matButton="filled" type="button" (click)="continue()" #continueButton>
++              Continue
++            </button>
+           </div>
+         } @else {
+           <form [formGroup]="answerForm" (ngSubmit)="submitAnswer()" class="active-game__form">
+diff --git a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts
+index b985337..1c32a6d 100644
+--- a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts
++++ b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts
+@@ -1,4 +1,14 @@
+-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
++import {
++  ChangeDetectionStrategy,
++  Component,
++  OnInit,
++  afterRenderEffect,
++  computed,
++  inject,
++  input,
++  signal,
++  viewChild,
++} from '@angular/core';
+ import { toSignal } from '@angular/core/rxjs-interop';
+ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { MatButtonModule } from '@angular/material/button';
+@@ -55,6 +65,17 @@ export class ActiveGamePageComponent implements OnInit {
+ 
+   protected readonly finishing = signal(false);
+ 
++  private readonly continueButton = viewChild<HTMLButtonElement>('continueButton');
++
++  constructor() {
++    // Auto-focus Continue when it appears so native Enter-on-button already matches a click.
++    afterRenderEffect(() => {
++      if (this.state.lastValidation()) {
++        this.continueButton()?.focus();
++      }
++    });
++  }
++
+   ngOnInit(): void {
+     this.state.load(this.gameIdAsNumber());
+   }
+@@ -82,6 +103,12 @@ export class ActiveGamePageComponent implements OnInit {
+     this.answerForm.reset({ answer: '' });
+   }
+ 
++  protected onFeedbackKeydownEnter(event: Event): void {
++    // preventDefault stops the focused button's native Enter-triggers-click, avoiding a double continue().
++    event.preventDefault();
++    this.continue();
++  }
++
+   protected finishGame(): void {
+     this.finishing.set(true);
+     this.gameApi.finish(this.gameIdAsNumber()).subscribe(() => {
+diff --git a/frontend/src/app/features/games/state/active-game-state.service.ts b/frontend/src/app/features/games/state/active-game-state.service.ts
+index e17c9a9..bedab8d 100644
+--- a/frontend/src/app/features/games/state/active-game-state.service.ts
++++ b/frontend/src/app/features/games/state/active-game-state.service.ts
+@@ -1,9 +1,16 @@
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ 
+ import { AppError } from '../../../shared/models/api-error.model';
+-import { AnswerValidationResponse, Game } from '../models/game.model';
++import { AnswerValidationResponse, CurrentCard, Game } from '../models/game.model';
+ import { GameApiService } from '../services/game-api.service';
+ 
++/**
++ * Answering: no validation yet, current card accepts input.
++ * Reviewing: validation is shown for the current card; the next card is
++ * staged but must not be displayed until the user continues.
++ */
++export type GamePhase = 'answering' | 'reviewing';
++
+ /** Local reactive state for the Active Game page. */
+ @Injectable()
+ export class ActiveGameStateService {
+@@ -14,6 +21,9 @@ export class ActiveGameStateService {
+   private readonly errorSignal = signal<AppError | null>(null);
+   private readonly submittingSignal = signal(false);
+   private readonly lastValidationSignal = signal<AnswerValidationResponse | null>(null);
++  // Holds the next card once it's known, without displaying it — it is only
++  // merged into `game.currentCard` when continueToNextCard() runs.
++  private readonly pendingNextCardSignal = signal<CurrentCard | undefined>(undefined);
+   private questionStartedAt = Date.now();
+ 
+   readonly game = this.gameSignal.asReadonly();
+@@ -21,6 +31,7 @@ export class ActiveGameStateService {
+   readonly error = this.errorSignal.asReadonly();
+   readonly submitting = this.submittingSignal.asReadonly();
+   readonly lastValidation = this.lastValidationSignal.asReadonly();
++  readonly phase = computed<GamePhase>(() => (this.lastValidationSignal() ? 'reviewing' : 'answering'));
+ 
+   readonly progress = computed(() => {
+     const game = this.gameSignal();
+@@ -58,12 +69,12 @@ export class ActiveGameStateService {
+     this.gameApi.submitAnswer(gameId, { cardId, answer, responseTimeMs }).subscribe({
+       next: (validation) => {
+         this.lastValidationSignal.set(validation);
++        this.pendingNextCardSignal.set(validation.nextCard);
+         this.gameSignal.update((game) =>
+           game
+             ? {
+                 ...game,
+                 answeredCards: game.answeredCards + 1,
+-                currentCard: validation.nextCard,
+               }
+             : game,
+         );
+@@ -81,6 +92,9 @@ export class ActiveGameStateService {
+   }
+ 
+   continueToNextCard(): void {
++    const nextCard = this.pendingNextCardSignal();
++    this.gameSignal.update((game) => (game ? { ...game, currentCard: nextCard } : game));
++    this.pendingNextCardSignal.set(undefined);
+     this.lastValidationSignal.set(null);
+     this.questionStartedAt = Date.now();
+   }

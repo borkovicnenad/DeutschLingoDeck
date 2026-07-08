@@ -43,6 +43,7 @@
             [class.active-game__feedback--correct]="validation.correct"
             [class.active-game__feedback--incorrect]="!validation.correct"
             role="status"
+            (keydown.enter)="onFeedbackKeydownEnter($event)"
           >
             <p><strong>{{ validation.correct ? 'Correct!' : validation.result }}</strong></p>
             @if (!validation.correct) {
@@ -51,7 +52,9 @@
             @if (validation.message) {
               <p>{{ validation.message }}</p>
             }
-            <button matButton="filled" type="button" (click)="continue()">Continue</button>
+            <button matButton="filled" type="button" (click)="continue()" #continueButton>
+              Continue
+            </button>
           </div>
         } @else {
           <form [formGroup]="answerForm" (ngSubmit)="submitAnswer()" class="active-game__form">

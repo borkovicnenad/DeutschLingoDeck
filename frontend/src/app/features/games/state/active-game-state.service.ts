@@ -1,8 +1,15 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { AppError } from '../../../shared/models/api-error.model';
-import { AnswerValidationResponse, Game } from '../models/game.model';
+import { AnswerValidationResponse, CurrentCard, Game } from '../models/game.model';
 import { GameApiService } from '../services/game-api.service';
+
+/**
+ * Answering: no validation yet, current card accepts input.
+ * Reviewing: validation is shown for the current card; the next card is
+ * staged but must not be displayed until the user continues.
+ */
+export type GamePhase = 'answering' | 'reviewing';
 
 /** Local reactive state for the Active Game page. */
 @Injectable()
@@ -14,6 +21,9 @@ export class ActiveGameStateService {
   private readonly errorSignal = signal<AppError | null>(null);
   private readonly submittingSignal = signal(false);
   private readonly lastValidationSignal = signal<AnswerValidationResponse | null>(null);
+  // Holds the next card once it's known, without displaying it — it is only
+  // merged into `game.currentCard` when continueToNextCard() runs.
+  private readonly pendingNextCardSignal = signal<CurrentCard | undefined>(undefined);
   private questionStartedAt = Date.now();
 
   readonly game = this.gameSignal.asReadonly();
@@ -21,6 +31,7 @@ export class ActiveGameStateService {
   readonly error = this.errorSignal.asReadonly();
   readonly submitting = this.submittingSignal.asReadonly();
   readonly lastValidation = this.lastValidationSignal.asReadonly();
+  readonly phase = computed<GamePhase>(() => (this.lastValidationSignal() ? 'reviewing' : 'answering'));
 
   readonly progress = computed(() => {
     const game = this.gameSignal();
@@ -58,12 +69,12 @@ export class ActiveGameStateService {
     this.gameApi.submitAnswer(gameId, { cardId, answer, responseTimeMs }).subscribe({
       next: (validation) => {
         this.lastValidationSignal.set(validation);
+        this.pendingNextCardSignal.set(validation.nextCard);
         this.gameSignal.update((game) =>
           game
             ? {
                 ...game,
                 answeredCards: game.answeredCards + 1,
-                currentCard: validation.nextCard,
               }
             : game,
         );
@@ -81,6 +92,9 @@ export class ActiveGameStateService {
   }
 
   continueToNextCard(): void {
+    const nextCard = this.pendingNextCardSignal();
+    this.gameSignal.update((game) => (game ? { ...game, currentCard: nextCard } : game));
+    this.pendingNextCardSignal.set(undefined);
     this.lastValidationSignal.set(null);
     this.questionStartedAt = Date.now();
   }
