@@ -91,4 +91,67 @@ describe('ActiveGamePageComponent - Enter key drives Continue', () => {
     expect(nativeElement.querySelector('.active-game__prompt')?.textContent).toContain('Katze');
     expect(gameApi.submitAnswer).toHaveBeenCalledTimes(1);
   });
+
+  it('auto-focuses the answer input on initial load', async () => {
+    const fixture = TestBed.createComponent(ActiveGamePageComponent);
+    fixture.componentRef.setInput('gameId', '99');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const nativeElement = fixture.nativeElement as HTMLElement;
+    const input = nativeElement.querySelector('input[formControlName="answer"]');
+
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('Skip submits an empty answer through the same flow, bypassing required validation', async () => {
+    const fixture = TestBed.createComponent(ActiveGamePageComponent);
+    fixture.componentRef.setInput('gameId', '99');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const nativeElement = fixture.nativeElement as HTMLElement;
+    const skipButton = Array.from(nativeElement.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Skip',
+    ) as HTMLButtonElement;
+
+    expect(skipButton).toBeTruthy();
+    skipButton.click();
+    fixture.detectChanges();
+
+    expect(gameApi.submitAnswer).toHaveBeenCalledTimes(1);
+    expect(gameApi.submitAnswer).toHaveBeenCalledWith(
+      99,
+      expect.objectContaining({ cardId: 1, answer: '' }),
+    );
+  });
+
+  it('re-focuses the answer input after Continue moves to the next card', async () => {
+    const fixture = TestBed.createComponent(ActiveGamePageComponent);
+    fixture.componentRef.setInput('gameId', '99');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance as unknown as {
+      answerForm: { setValue(v: { answer: string }): void };
+      submitAnswer(): void;
+      continue(): void;
+    };
+    component.answerForm.setValue({ answer: 'Hund' });
+    component.submitAnswer();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    component.continue();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const nativeElement = fixture.nativeElement as HTMLElement;
+    const input = nativeElement.querySelector('input[formControlName="answer"]');
+    expect(document.activeElement).toBe(input);
+  });
 });

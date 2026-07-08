@@ -79,11 +79,16 @@
           <form [formGroup]="answerForm" (ngSubmit)="submitAnswer()" class="active-game__form">
             <mat-form-field appearance="outline" class="active-game__answer-field">
               <mat-label>Your answer</mat-label>
-              <input matInput formControlName="answer" autocomplete="off" />
+              <input matInput #answerInput formControlName="answer" autocomplete="off" />
             </mat-form-field>
-            <button matButton="filled" type="submit" [disabled]="state.submitting()">
-              @if (state.submitting()) { Validating... } @else { Submit }
-            </button>
+            <div class="active-game__form-actions">
+              <button matButton="filled" type="submit" [disabled]="state.submitting()">
+                @if (state.submitting()) { Validating... } @else { Submit }
+              </button>
+              <button matButton="outlined" type="button" [disabled]="state.submitting()" (click)="skipAnswer()">
+                Skip
+              </button>
+            </div>
           </form>
         }
       </mat-card-content>

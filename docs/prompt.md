@@ -1,159 +1,56 @@
-### Additional change: Card generation based on source and target language
+# Task: Improve Game Card Input UX
 
-Implement dynamic card generation depending on the selected dictionary language direction.
+Please implement the following frontend improvements in the Angular application.
 
-The import source remains:
+## Requirements
 
-`./docs/BusinessDict-dev-with-examples.xlsx`
+### 1. Add Skip button next to Submit
 
-The Excel structure is:
+On every game card with a text answer input:
 
-* Column A → Article
-* Column B → Word
-* Column C → Grammar Info (plural forms, verb forms, adjective forms, etc.)
-* Column D → Example sentence
-* Column E → Translation
-* Column F → Difficulty
-* Column G → Tags
+- Add a **Skip** button next to the **Submit** button.
+- The **Submit** button must remain the primary Enter-key target.
+- Pressing **Enter** must still submit the typed answer, not trigger Skip.
+- The **Skip** button should only be triggered by an explicit mouse click or keyboard focus + activation.
 
-The stored database model should always remain language-independent:
+### 2. Skip counts as an incorrect empty answer
 
-* article
-* word
-* grammarInfo
-* example
-* translation
-* difficulty
-* tags
+When the user clicks **Skip**:
 
-**Do NOT duplicate data in the database for different language directions.**
-Instead, generate the card presentation dynamically depending on the dictionary configuration (`sourceLanguage` and `targetLanguage`).
+- Treat the submitted answer as an empty string: `""`.
+- Send/evaluate it through the same answer-checking flow as a normal submitted answer.
+- The result must be recorded as an incorrect answer.
+- The input field should remain required for normal Submit behavior, so users cannot accidentally submit an empty answer.
+- Skip is intentional, so it may bypass the required input validation.
 
----
+### 3. Autofocus input on new card
 
-## Case 1
+Whenever a new card is displayed:
 
-### Source Language = German (`de`)
+- The answer input field must automatically receive focus.
+- The user should be able to start typing immediately without clicking into the input.
+- This must happen after the card is rendered.
+- It should work consistently after:
+  - initial game load,
+  - Continue to next card,
+  - game mode changes if applicable.
 
-### Target Language = Croatian (`hr`)
+## Implementation Notes
 
-This is the standard German-learning mode.
+- Use Angular best practices for focus handling.
+- Avoid arbitrary timeouts unless there is no cleaner alternative.
+- Prefer `ViewChild`, lifecycle hooks, signals/effects, or a small reusable focus directive if appropriate.
+- Make sure focus does not accidentally move to the Skip button.
+- Preserve the existing required validation for normal submissions.
+- Avoid duplicate submissions or duplicate backend requests.
+- Keep the implementation aligned with the current component structure and styling.
 
-The card should be rendered as:
+## Acceptance Criteria
 
-**Question side**
-
-Word:
-
-* `Article + Word`
-* Example:
-
-  * show the example sentence from Column D underneath
-* Grammar:
-
-  * show grammar information from Column C underneath the example
-
-Example:
-
-Word:
-
-```
-die Voraussetzung
-```
-
-Example:
-
-```
-Eine klare Anforderungsanalyse ist die Voraussetzung dafür, dass das Entwicklungsteam später keine unnötigen Rückfragen im Sprint hat.
-```
-
-Grammar:
-
-```
-Plural: die Voraussetzungen
-```
-
-After the answer is revealed:
-
-Translation:
-
-```
-preduvjet
-```
-
-Continue displaying:
-
-* Example
-* Grammar
-* Difficulty
-* Tags
-
----
-
-## Case 2
-
-### Source Language = Croatian (`hr`)
-
-### Target Language = German (`de`)
-
-This mode is intended for active German recall.
-
-The **question side** should contain only the Croatian translation.
-
-Question:
-
-```
-preduvjet
-```
-
-After the answer is revealed:
-
-German:
-
-```
-die Voraussetzung
-```
-
-Then also display:
-
-Example:
-
-```
-Eine klare Anforderungsanalyse ist die Voraussetzung dafür, dass das Entwicklungsteam später keine unnötigen Rückfragen im Sprint hat.
-```
-
-Grammar:
-
-```
-Plural: die Voraussetzungen
-```
-
-Difficulty
-
-Tags
-
----
-
-## Rendering rules
-
-Never duplicate vocabulary records.
-
-The database should always store:
-
-* article
-* word
-* translation
-* example
-* grammarInfo
-* difficulty
-* tags
-
-Only the UI presentation changes according to the selected language direction.
-
-Implement a small presentation layer (mapper/view model/computed model) that produces the appropriate card representation for each dictionary configuration.
-
-Avoid creating separate entities, DTOs, or duplicated database records for each language pair.
-
-The learning logic, statistics, spaced repetition, and progress tracking should continue to reference the same underlying vocabulary record regardless of language direction.
-
-Update all relevant Angular components, backend DTOs (if necessary), game services, and card rendering logic so that both language directions are fully supported while keeping the domain model normalized.
+- Skip button appears next to Submit.
+- Enter submits the written answer.
+- Enter does not trigger Skip by default.
+- Empty input cannot be submitted normally via Submit.
+- Clicking Skip records an incorrect answer with an empty string.
+- New card input is focused automatically.
+- Existing Continue behavior still works.

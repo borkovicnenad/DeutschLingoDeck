@@ -52,6 +52,11 @@
   width: 100%;
 }
 
+.active-game__form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .active-game__feedback {
   padding: 1rem;
   border-radius: 0.5rem;

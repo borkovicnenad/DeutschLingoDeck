@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   OnInit,
   afterRenderEffect,
   computed,
@@ -80,12 +81,16 @@ export class ActiveGamePageComponent implements OnInit {
   });
 
   private readonly continueButton = viewChild<HTMLButtonElement>('continueButton');
+  private readonly answerInput = viewChild<ElementRef<HTMLInputElement>>('answerInput');
 
   constructor() {
-    // Auto-focus Continue when it appears so native Enter-on-button already matches a click.
     afterRenderEffect(() => {
       if (this.state.lastValidation()) {
+        // Auto-focus Continue when it appears so native Enter-on-button already matches a click.
         this.continueButton()?.focus();
+      } else if (this.state.game()?.currentCard) {
+        // Auto-focus the answer input for every new card (initial load and Continue alike).
+        this.answerInput()?.nativeElement.focus();
       }
     });
   }
@@ -110,6 +115,17 @@ export class ActiveGamePageComponent implements OnInit {
       currentCard.id,
       this.answerForm.getRawValue().answer,
     );
+  }
+
+  protected skipAnswer(): void {
+    const currentCard = this.state.game()?.currentCard;
+    if (!currentCard || this.state.submitting()) {
+      return;
+    }
+
+    // Skip intentionally bypasses the Submit button's required validation - it always
+    // records an empty answer, regardless of whatever partial text is in the field.
+    this.state.submitAnswer(this.gameIdAsNumber(), currentCard.id, '');
   }
 
   protected continue(): void {
