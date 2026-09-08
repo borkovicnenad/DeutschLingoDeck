@@ -23,7 +23,7 @@
     <app-stat-card label="Correct Answers" [value]="summary.correctAnswers" icon="check_circle" />
     <app-stat-card label="Incorrect Answers" [value]="summary.incorrectAnswers" icon="cancel" />
     @if (summary.durationSeconds !== undefined) {
-      <app-stat-card label="Duration" [value]="summary.durationSeconds + 's'" icon="schedule" />
+      <app-stat-card label="Duration" [value]="summary.durationSeconds | appDuration" icon="schedule" />
     }
     @if (summary.averageResponseTimeMs !== undefined) {
       <app-stat-card

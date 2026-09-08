@@ -39,13 +39,20 @@ public interface GameAnswerRepository extends JpaRepository<GameAnswer, Long> {
 	long countCorrectByUserAndDictionary(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
 
 	/** One row per card in {@code cardIds} that has at least one answer from this user. */
+	/** {@code start}/{@code end} must be resolved (non-null) - callers default to an all-time range when the user gave no filter. */
 	@Query("""
 			SELECT new com.deutschlingodeck.game.repository.CardAnswerAggregate(
 			    a.card.id, COUNT(a), SUM(CASE WHEN a.correct = true THEN 1L ELSE 0L END),
-			    MAX(a.answeredAt), MAX(CASE WHEN a.correct = true THEN a.answeredAt ELSE NULL END))
+			    MAX(a.answeredAt), MAX(CASE WHEN a.correct = true THEN a.answeredAt ELSE NULL END),
+			    AVG(a.responseTimeMs))
 			FROM GameAnswer a
 			WHERE a.game.user.id = :userId AND a.card.id IN :cardIds
+			  AND a.answeredAt >= :start AND a.answeredAt <= :end
 			GROUP BY a.card.id
 			""")
-	List<CardAnswerAggregate> aggregateForCards(@Param("userId") Long userId, @Param("cardIds") List<Long> cardIds);
+	List<CardAnswerAggregate> aggregateForCards(
+			@Param("userId") Long userId,
+			@Param("cardIds") List<Long> cardIds,
+			@Param("start") OffsetDateTime start,
+			@Param("end") OffsetDateTime end);
 }

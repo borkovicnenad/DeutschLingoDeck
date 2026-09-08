@@ -11,7 +11,6 @@ import com.deutschlingodeck.dictionary.repository.CardRepository;
 import com.deutschlingodeck.dictionary.repository.DictionaryRepository;
 import com.deutschlingodeck.game.dto.GameStatus;
 import com.deutschlingodeck.game.entity.Game;
-import com.deutschlingodeck.game.entity.GameAnswer;
 import com.deutschlingodeck.game.progress.CardProgress;
 import com.deutschlingodeck.game.progress.CardProgressRepository;
 import com.deutschlingodeck.game.repository.CardAnswerAggregate;
@@ -23,6 +22,7 @@ import com.deutschlingodeck.statistics.dto.CardStatisticsResponse;
 import com.deutschlingodeck.statistics.dto.DashboardStatisticsResponse;
 import com.deutschlingodeck.statistics.dto.DictionaryStatisticsResponse;
 import com.deutschlingodeck.statistics.dto.LearningHistoryResponse;
+import com.deutschlingodeck.statistics.dto.MasteryBreakdownResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -75,16 +75,21 @@ public class StatisticsServiceImpl implements StatisticsService {
 	}
 
 	@Override
-	public DashboardStatisticsResponse getDashboardStatistics(LocalDate from, LocalDate to) {
+	public DashboardStatisticsResponse getDashboardStatistics(LocalDate from, LocalDate to, Long dictionaryId, String gameMode) {
 		Long userId = currentUserProvider.getUserId();
+		if (dictionaryId != null) {
+			requireOwnedDictionary(dictionaryId, userId);
+		}
 		OffsetDateTime[] range = resolveRange(from, to);
 
-		List<Game> games = gameRepository.findByUserIdAndStartedAtBetween(userId, range[0], range[1]);
-		List<GameAnswer> answers = gameAnswerRepository.findByUserAndAnsweredAtBetween(userId, range[0], range[1]);
+		List<Game> games = gameRepository.findForStatistics(userId, range[0], range[1], dictionaryId, gameMode);
 
-		int totalAnswers = answers.size();
-		int totalCorrect = (int) answers.stream().filter(GameAnswer::isCorrect).count();
-		int totalIncorrect = totalAnswers - totalCorrect;
+		// Derived from each game's own running counters rather than a separate GameAnswer query,
+		// so the numbers always reflect exactly the same set of games the dictionary/game-mode
+		// filters selected above.
+		int totalCorrect = games.stream().mapToInt(game -> orZero(game.getCorrectAnswers())).sum();
+		int totalIncorrect = games.stream().mapToInt(game -> orZero(game.getIncorrectAnswers())).sum();
+		int totalAnswers = totalCorrect + totalIncorrect;
 		Double overallAccuracy = totalAnswers == 0 ? null : (double) totalCorrect / totalAnswers;
 
 		long totalStudyTimeSeconds = games.stream()
@@ -104,22 +109,21 @@ public class StatisticsServiceImpl implements StatisticsService {
 	}
 
 	@Override
-	public PageResponse<CardStatisticsResponse> getCardStatistics(Long dictionaryId, int page, int size) {
+	public PageResponse<CardStatisticsResponse> getCardStatistics(Long dictionaryId, LocalDate from, LocalDate to, int page, int size) {
 		Long userId = currentUserProvider.getUserId();
 		Pageable pageable = PageRequest.of(page, size);
 
 		Page<Card> cards;
 		if (dictionaryId != null) {
-			Dictionary dictionary = dictionaryRepository.findById(dictionaryId)
-					.filter(d -> !d.isDeleted())
-					.orElseThrow(() -> ResourceNotFoundException.of("Dictionary", dictionaryId));
-			ownershipGuard.requireOwner(dictionary.getOwner().getId(), userId);
+			requireOwnedDictionary(dictionaryId, userId);
 			cards = cardRepository.findByDictionaryId(dictionaryId, pageable);
 		} else {
 			cards = cardRepository.findByDictionaryOwnerId(userId, pageable);
 		}
 
-		Map<Long, CardAnswerAggregate> aggregates = aggregateFor(userId, cards.getContent().stream().map(Card::getId).toList());
+		OffsetDateTime[] range = resolveRange(from, to);
+		Map<Long, CardAnswerAggregate> aggregates =
+				aggregateFor(userId, cards.getContent().stream().map(Card::getId).toList(), range[0], range[1]);
 		return PageMapper.toPageResponse(cards, card -> toCardStatisticsResponse(card, aggregates.get(card.getId())));
 	}
 
@@ -131,12 +135,46 @@ public class StatisticsServiceImpl implements StatisticsService {
 	}
 
 	@Override
-	public PageResponse<LearningHistoryResponse> getLearningHistory(LocalDate from, LocalDate to, int page, int size) {
+	public MasteryBreakdownResponse getMasteryBreakdown(Long dictionaryId) {
 		Long userId = currentUserProvider.getUserId();
+		if (dictionaryId != null) {
+			requireOwnedDictionary(dictionaryId, userId);
+		}
+
+		int totalCards = dictionaryId != null
+				? cardRepository.countByDictionaryId(dictionaryId)
+				: cardRepository.countByDictionaryOwnerId(userId);
+
+		int mastered = (int) cardProgressRepository.countByIntervalDaysRange(
+				userId, dictionaryId, CardProgress.MASTERED_INTERVAL_DAYS_THRESHOLD, Integer.MAX_VALUE);
+		int strong = (int) cardProgressRepository.countByIntervalDaysRange(
+				userId, dictionaryId, 7, CardProgress.MASTERED_INTERVAL_DAYS_THRESHOLD - 1);
+		int familiar = (int) cardProgressRepository.countByIntervalDaysRange(userId, dictionaryId, 2, 6);
+		int learning = (int) cardProgressRepository.countByIntervalDaysRange(userId, dictionaryId, 0, 1);
+		int reviewed = (int) cardProgressRepository.countAllForUser(userId, dictionaryId);
+		int newCount = Math.max(0, totalCards - reviewed);
+
+		return new MasteryBreakdownResponse(newCount, learning, familiar, strong, mastered, totalCards);
+	}
+
+	@Override
+	public PageResponse<LearningHistoryResponse> getLearningHistory(
+			LocalDate from, LocalDate to, Long dictionaryId, String gameMode, int page, int size) {
+		Long userId = currentUserProvider.getUserId();
+		if (dictionaryId != null) {
+			requireOwnedDictionary(dictionaryId, userId);
+		}
 		OffsetDateTime[] range = resolveRange(from, to);
 		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "startedAt"));
-		Page<Game> games = gameRepository.findByUserIdAndStartedAtBetween(userId, range[0], range[1], pageable);
+		Page<Game> games = gameRepository.findForStatistics(userId, range[0], range[1], dictionaryId, gameMode, pageable);
 		return PageMapper.toPageResponse(games, this::toLearningHistoryResponse);
+	}
+
+	private void requireOwnedDictionary(Long dictionaryId, Long userId) {
+		Dictionary dictionary = dictionaryRepository.findById(dictionaryId)
+				.filter(d -> !d.isDeleted())
+				.orElseThrow(() -> ResourceNotFoundException.of("Dictionary", dictionaryId));
+		ownershipGuard.requireOwner(dictionary.getOwner().getId(), userId);
 	}
 
 	private DictionaryStatisticsResponse toDictionaryStatistics(Long userId, Dictionary dictionary) {
@@ -150,7 +188,8 @@ public class StatisticsServiceImpl implements StatisticsService {
 				userId, dictionaryId, CardProgress.MASTERED_INTERVAL_DAYS_THRESHOLD);
 
 		List<Long> cardIds = cardRepository.findByDictionaryIdOrderByPosition(dictionaryId).stream().map(Card::getId).toList();
-		long difficultCards = aggregateFor(userId, cardIds).values().stream()
+		OffsetDateTime[] allTime = resolveRange(null, null);
+		long difficultCards = aggregateFor(userId, cardIds, allTime[0], allTime[1]).values().stream()
 				.filter(agg -> agg.timesShown() >= DIFFICULT_CARD_MIN_ATTEMPTS)
 				.filter(agg -> (double) agg.timesCorrect() / agg.timesShown() < DIFFICULT_CARD_SUCCESS_RATE_THRESHOLD)
 				.count();
@@ -160,11 +199,11 @@ public class StatisticsServiceImpl implements StatisticsService {
 				masteredCards, (int) difficultCards);
 	}
 
-	private Map<Long, CardAnswerAggregate> aggregateFor(Long userId, List<Long> cardIds) {
+	private Map<Long, CardAnswerAggregate> aggregateFor(Long userId, List<Long> cardIds, OffsetDateTime start, OffsetDateTime end) {
 		if (cardIds.isEmpty()) {
 			return Map.of();
 		}
-		return gameAnswerRepository.aggregateForCards(userId, cardIds).stream()
+		return gameAnswerRepository.aggregateForCards(userId, cardIds, start, end).stream()
 				.collect(Collectors.toMap(CardAnswerAggregate::cardId, Function.identity()));
 	}
 
@@ -178,7 +217,8 @@ public class StatisticsServiceImpl implements StatisticsService {
 				card.getId(), card.getDictionary().getId(), card.getSourceText(),
 				(int) timesShown, (int) timesCorrect, (int) timesIncorrect, successRate,
 				aggregate == null ? null : aggregate.lastShownAt(),
-				aggregate == null ? null : aggregate.lastCorrectAt());
+				aggregate == null ? null : aggregate.lastCorrectAt(),
+				aggregate == null ? null : aggregate.averageResponseTimeMs());
 	}
 
 	private LearningHistoryResponse toLearningHistoryResponse(Game game) {
@@ -190,6 +230,10 @@ public class StatisticsServiceImpl implements StatisticsService {
 		return new LearningHistoryResponse(
 				game.getId(), game.getDictionary().getId(), game.getDictionary().getName(),
 				game.getStatus(), game.getStartedAt(), game.getFinishedAt(), accuracy);
+	}
+
+	private int orZero(Integer value) {
+		return value == null ? 0 : value;
 	}
 
 	private OffsetDateTime[] resolveRange(LocalDate from, LocalDate to) {

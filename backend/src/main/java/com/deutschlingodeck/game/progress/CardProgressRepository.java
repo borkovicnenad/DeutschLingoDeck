@@ -26,6 +26,12 @@ public interface CardProgressRepository extends JpaRepository<CardProgress, Long
 	List<Long> findReviewedCardIdsForDictionary(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
 
 	@Query("""
+			SELECT cp FROM CardProgress cp
+			WHERE cp.user.id = :userId AND cp.card.dictionary.id = :dictionaryId
+			""")
+	List<CardProgress> findAllForDictionary(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
+
+	@Query("""
 			SELECT COUNT(cp) FROM CardProgress cp
 			WHERE cp.user.id = :userId AND cp.dueDate <= :today
 			""")
@@ -40,4 +46,23 @@ public interface CardProgressRepository extends JpaRepository<CardProgress, Long
 
 	@Query("SELECT COUNT(cp) FROM CardProgress cp WHERE cp.user.id = :userId AND cp.intervalDays >= :masteredThreshold")
 	long countMasteredForUser(@Param("userId") Long userId, @Param("masteredThreshold") int masteredThreshold);
+
+	/** Backs the Mastery Breakdown tiers; {@code dictionaryId} is optional (null scopes to all of the user's dictionaries). */
+	@Query("""
+			SELECT COUNT(cp) FROM CardProgress cp
+			WHERE cp.user.id = :userId
+			  AND (:dictionaryId IS NULL OR cp.card.dictionary.id = :dictionaryId)
+			  AND cp.intervalDays >= :minInclusive AND cp.intervalDays <= :maxInclusive
+			""")
+	long countByIntervalDaysRange(
+			@Param("userId") Long userId,
+			@Param("dictionaryId") Long dictionaryId,
+			@Param("minInclusive") int minInclusive,
+			@Param("maxInclusive") int maxInclusive);
+
+	@Query("""
+			SELECT COUNT(cp) FROM CardProgress cp
+			WHERE cp.user.id = :userId AND (:dictionaryId IS NULL OR cp.card.dictionary.id = :dictionaryId)
+			""")
+	long countAllForUser(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
 }

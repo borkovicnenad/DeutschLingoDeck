@@ -7,7 +7,7 @@
       matInput
       type="date"
       [ngModel]="fromDate()"
-      (ngModelChange)="fromDate.set($event); onDateFilterChange()"
+      (ngModelChange)="fromDate.set($event); onFilterChange()"
     />
   </mat-form-field>
   <mat-form-field appearance="outline">
@@ -16,8 +16,32 @@
       matInput
       type="date"
       [ngModel]="toDate()"
-      (ngModelChange)="toDate.set($event); onDateFilterChange()"
+      (ngModelChange)="toDate.set($event); onFilterChange()"
     />
+  </mat-form-field>
+  <mat-form-field appearance="outline">
+    <mat-label>Dictionary</mat-label>
+    <mat-select
+      [ngModel]="dictionaryFilter()"
+      (ngModelChange)="dictionaryFilter.set($event); onFilterChange()"
+    >
+      <mat-option [value]="''">All</mat-option>
+      @for (dictionary of dictionaries(); track dictionary.id) {
+        <mat-option [value]="dictionary.id">{{ dictionary.name }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field appearance="outline">
+    <mat-label>Game mode</mat-label>
+    <mat-select
+      [ngModel]="gameModeFilter()"
+      (ngModelChange)="gameModeFilter.set($event); onFilterChange()"
+    >
+      <mat-option [value]="''">All</mat-option>
+      @for (mode of gameModes; track mode) {
+        <mat-option [value]="mode">{{ mode }}</mat-option>
+      }
+    </mat-select>
   </mat-form-field>
 </div>
 
@@ -42,6 +66,11 @@
         icon="target"
       />
       <app-stat-card label="Total Answers" [value]="overview.totalAnswers ?? 0" icon="quiz" />
+      <app-stat-card
+        label="Total Study Time"
+        [value]="overview.totalStudyTimeSeconds ?? 0 | appDuration"
+        icon="schedule"
+      />
       <app-stat-card
         label="Current Streak"
         [value]="overview.currentLearningStreak ?? 0"
@@ -95,10 +124,29 @@
   <mat-card appearance="outlined" class="statistics__chart-card">
     <mat-card-header>
       <mat-card-title>Mastery Breakdown</mat-card-title>
-      <mat-card-subtitle>Mastered vs. difficult cards</mat-card-subtitle>
+      <mat-card-subtitle>How well each card is retained, from never studied to long-term recall</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      <app-chart-donut [segments]="masterySegments()" ariaLabel="Mastery breakdown" />
+      @if (masteryBreakdownError()) {
+        <app-inline-alert
+          tone="warning"
+          message="Couldn't load the mastery breakdown."
+          [retryable]="true"
+          (retry)="loadMasteryBreakdown()"
+        />
+      } @else if (masteryBreakdown(); as breakdown) {
+        <app-chart-donut [segments]="masterySegments()" ariaLabel="Mastery breakdown">
+        </app-chart-donut>
+        <ul class="statistics__mastery-legend">
+          @for (segment of masterySegments(); track segment.label) {
+            <li [matTooltip]="tierExplanation(segment.label)">
+              {{ segment.label }}: {{ tierExplanation(segment.label) }}
+            </li>
+          }
+        </ul>
+      } @else {
+        <app-empty-state icon="donut_large" title="No cards yet" />
+      }
     </mat-card-content>
   </mat-card>
 </section>
@@ -199,6 +247,12 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header>Last Shown</th>
         <td mat-cell *matCellDef="let stat">
           {{ stat.lastShownAt ? (stat.lastShownAt | date: 'short') : '—' }}
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="averageResponseTimeMs">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Avg. Response</th>
+        <td mat-cell *matCellDef="let stat">
+          {{ stat.averageResponseTimeMs ? (stat.averageResponseTimeMs / 1000).toFixed(1) + 's' : '—' }}
         </td>
       </ng-container>
       <tr mat-header-row *matHeaderRowDef="cardColumns"></tr>

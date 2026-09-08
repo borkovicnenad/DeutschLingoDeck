@@ -12,6 +12,7 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { AppError } from '../../../../shared/models/api-error.model';
+import { DurationPipe } from '../../../../shared/pipes/duration.pipe';
 import { GameStatus } from '../../models/game-status.enum';
 import { GameSummary } from '../../models/game.model';
 import { GameApiService } from '../../services/game-api.service';
@@ -38,6 +39,7 @@ const STATUS_BADGE_VARIANT: Record<GameStatus, BadgeVariant> = {
     EmptyStateComponent,
     InlineAlertComponent,
     BadgeComponent,
+    DurationPipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './game-history-page.component.html',

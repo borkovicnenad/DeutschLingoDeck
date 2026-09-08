@@ -8,6 +8,7 @@ import { InlineAlertComponent } from '../../../../shared/components/inline-alert
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
 import { AppError } from '../../../../shared/models/api-error.model';
+import { DurationPipe } from '../../../../shared/pipes/duration.pipe';
 import { GameSummary } from '../../models/game.model';
 import { GameApiService } from '../../services/game-api.service';
 
@@ -17,6 +18,7 @@ import { GameApiService } from '../../services/game-api.service';
     RouterLink,
     MatButtonModule,
     MatProgressBarModule,
+    DurationPipe,
     PageHeaderComponent,
     BreadcrumbsComponent,
     InlineAlertComponent,

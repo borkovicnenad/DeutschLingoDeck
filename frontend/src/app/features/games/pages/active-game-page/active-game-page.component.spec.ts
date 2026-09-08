@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 
+import { API_BASE_URL } from '../../../../core/config/api-base-url.token';
 import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
 import { AnswerValidationResponse, CurrentCard, Game } from '../../models/game.model';
 import { GameApiService } from '../../services/game-api.service';
@@ -49,6 +50,7 @@ describe('ActiveGamePageComponent - Enter key drives Continue', () => {
         provideRouter([]),
         { provide: GameApiService, useValue: gameApi },
         { provide: ConfirmDialogService, useValue: { confirm: vi.fn().mockReturnValue(of(true)) } },
+        { provide: API_BASE_URL, useValue: 'http://localhost/api/v1' },
       ],
     }).compileComponents();
   });

@@ -20,6 +20,16 @@ export interface CardStatistics {
   successRate?: number;
   lastShownAt?: string | null;
   lastCorrectAt?: string | null;
+  averageResponseTimeMs?: number | null;
+}
+
+export interface MasteryBreakdown {
+  newCount?: number;
+  learningCount?: number;
+  familiarCount?: number;
+  strongCount?: number;
+  masteredCount?: number;
+  totalCards?: number;
 }
 
 export interface DictionaryStatistics {

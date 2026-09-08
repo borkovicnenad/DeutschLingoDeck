@@ -21,6 +21,8 @@ import com.deutschlingodeck.game.dto.GameStatus;
 import com.deutschlingodeck.game.dto.GameSummaryResponse;
 import com.deutschlingodeck.game.dto.SubmitAnswerRequest;
 import com.deutschlingodeck.game.dto.ValidationResult;
+import com.deutschlingodeck.game.engine.DeckBuilder;
+import com.deutschlingodeck.game.engine.RequeuePolicy;
 import com.deutschlingodeck.game.entity.Game;
 import com.deutschlingodeck.game.entity.GameAnswer;
 import com.deutschlingodeck.game.mapper.GameMapper;
@@ -37,18 +39,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @Service
 public class GameServiceImpl implements GameService {
 
-	/** Cap on how many cards a single game deals, even if more are due. */
-	private static final int SESSION_CARD_LIMIT = 20;
+	private static final String DEFAULT_GAME_MODE = "STANDARD";
 
 	/** The language a card's {@code article}/{@code sourceText} are always recorded in. */
 	private static final String GERMAN_LANGUAGE = "de";
@@ -62,6 +59,8 @@ public class GameServiceImpl implements GameService {
 	private final GameMapper gameMapper;
 	private final AnswerValidator answerValidator;
 	private final SpacedRepetitionScheduler scheduler;
+	private final DeckBuilder deckBuilder;
+	private final RequeuePolicy requeuePolicy;
 	private final GamificationService gamificationService;
 	private final CurrentUserProvider currentUserProvider;
 	private final OwnershipGuard ownershipGuard;
@@ -76,6 +75,8 @@ public class GameServiceImpl implements GameService {
 			GameMapper gameMapper,
 			AnswerValidator answerValidator,
 			SpacedRepetitionScheduler scheduler,
+			DeckBuilder deckBuilder,
+			RequeuePolicy requeuePolicy,
 			GamificationService gamificationService,
 			CurrentUserProvider currentUserProvider,
 			OwnershipGuard ownershipGuard) {
@@ -88,6 +89,8 @@ public class GameServiceImpl implements GameService {
 		this.gameMapper = gameMapper;
 		this.answerValidator = answerValidator;
 		this.scheduler = scheduler;
+		this.deckBuilder = deckBuilder;
+		this.requeuePolicy = requeuePolicy;
 		this.gamificationService = gamificationService;
 		this.currentUserProvider = currentUserProvider;
 		this.ownershipGuard = ownershipGuard;
@@ -102,7 +105,20 @@ public class GameServiceImpl implements GameService {
 				.orElseThrow(() -> ResourceNotFoundException.of("Dictionary", request.dictionaryId()));
 		ownershipGuard.requireOwner(dictionary.getOwner().getId(), userId);
 
-		List<Card> deck = buildDeck(userId, dictionary.getId());
+		// Starting a new game completes any stale one instead of leaving it stuck IN_PROGRESS
+		// forever; the partial unique index on (user_id) WHERE status = 'IN_PROGRESS' is the
+		// last-resort guard against a race between two concurrent createGame calls. The abandon
+		// must be flushed before the insert below: Game's IDENTITY id generation forces Hibernate
+		// to issue that INSERT immediately rather than at end-of-transaction, so without an
+		// explicit flush here it can race ahead of this pending UPDATE and trip the unique index.
+		OffsetDateTime now = OffsetDateTime.now();
+		gameRepository.findByUserIdAndStatus(userId, GameStatus.IN_PROGRESS).ifPresent(stale -> {
+			stale.setStatus(GameStatus.ABANDONED);
+			stale.setFinishedAt(now);
+			gameRepository.saveAndFlush(stale);
+		});
+
+		List<Card> deck = deckBuilder.buildDeck(userId, dictionary.getId());
 		if (deck.isEmpty()) {
 			throw new ConflictException("This dictionary has no cards yet - add or import some before starting a game");
 		}
@@ -112,7 +128,9 @@ public class GameServiceImpl implements GameService {
 		game.setAnsweredCards(0);
 		game.setCorrectAnswers(0);
 		game.setIncorrectAnswers(0);
-		game.setStartedAt(OffsetDateTime.now());
+		game.setStartedAt(now);
+		game.setLastActivityAt(now);
+		game.setGameMode(request.gameMode() == null || request.gameMode().isBlank() ? DEFAULT_GAME_MODE : request.gameMode());
 		game.setDeckCardIds(deck.stream().map(Card::getId).toList());
 		game = gameRepository.save(game);
 
@@ -160,9 +178,11 @@ public class GameServiceImpl implements GameService {
 		answer.setAnsweredAt(now);
 		gameAnswerRepository.save(answer);
 
+		requeuePolicy.onAnswer(game, card.getId(), correct, index);
 		game.setAnsweredCards(index + 1);
 		game.setCorrectAnswers(game.getCorrectAnswers() + (correct ? 1 : 0));
 		game.setIncorrectAnswers(game.getIncorrectAnswers() + (correct ? 0 : 1));
+		game.setLastActivityAt(now);
 
 		CardProgress progress = cardProgressRepository.findByUserIdAndCardId(userId, card.getId())
 				.orElseGet(() -> new CardProgress(userRepository.getReferenceById(userId), card));
@@ -209,45 +229,6 @@ public class GameServiceImpl implements GameService {
 	@Override
 	public GameSummaryResponse getGameSummary(Long gameId) {
 		return buildSummary(loadOwnedGame(gameId));
-	}
-
-	/**
-	 * Deals due cards first (previously reviewed, {@code due_date} today or earlier), then
-	 * never-reviewed cards, then not-yet-due cards, capped at {@link #SESSION_CARD_LIMIT} so a
-	 * large dictionary never dumps every card into a single session.
-	 */
-	private List<Card> buildDeck(Long userId, Long dictionaryId) {
-		List<Card> allCards = cardRepository.findByDictionaryIdOrderByPosition(dictionaryId);
-		if (allCards.isEmpty()) {
-			return List.of();
-		}
-
-		Set<Long> dueCardIds = new HashSet<>();
-		for (CardProgress progress : cardProgressRepository.findDueForDictionary(userId, dictionaryId, LocalDate.now())) {
-			dueCardIds.add(progress.getCard().getId());
-		}
-		Set<Long> reviewedCardIds = new HashSet<>(cardProgressRepository.findReviewedCardIdsForDictionary(userId, dictionaryId));
-
-		int sessionCap = Math.min(allCards.size(), SESSION_CARD_LIMIT);
-		List<Card> deck = new ArrayList<>();
-		for (Card card : allCards) {
-			if (dueCardIds.contains(card.getId())) {
-				deck.add(card);
-			}
-		}
-		addUpTo(deck, allCards.stream().filter(c -> !reviewedCardIds.contains(c.getId())).toList(), sessionCap);
-		addUpTo(deck, allCards.stream().filter(c -> reviewedCardIds.contains(c.getId()) && !dueCardIds.contains(c.getId())).toList(), sessionCap);
-
-		return deck.size() > sessionCap ? new ArrayList<>(deck.subList(0, sessionCap)) : deck;
-	}
-
-	private void addUpTo(List<Card> deck, List<Card> candidates, int cap) {
-		for (Card candidate : candidates) {
-			if (deck.size() >= cap) {
-				return;
-			}
-			deck.add(candidate);
-		}
 	}
 
 	private Game loadOwnedGame(Long gameId) {

@@ -1,8 +1,11 @@
+import { isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  OnDestroy,
   OnInit,
+  PLATFORM_ID,
   afterRenderEffect,
   computed,
   inject,
@@ -22,6 +25,8 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Router } from '@angular/router';
 import { map, timer } from 'rxjs';
 
+import { TokenStorageService } from '../../../../core/auth/token-storage.service';
+import { API_BASE_URL } from '../../../../core/config/api-base-url.token';
 import { BreadcrumbsComponent } from '../../../../shared/components/breadcrumbs/breadcrumbs.component';
 import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
 import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
@@ -48,12 +53,15 @@ import { ActiveGameStateService } from '../../state/active-game-state.service';
   templateUrl: './active-game-page.component.html',
   styleUrl: './active-game-page.component.css',
 })
-export class ActiveGamePageComponent implements OnInit {
+export class ActiveGamePageComponent implements OnInit, OnDestroy {
   protected readonly state = inject(ActiveGameStateService);
   private readonly gameApi = inject(GameApiService);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly formBuilder = inject(FormBuilder);
   private readonly router = inject(Router);
+  private readonly tokenStorage = inject(TokenStorageService);
+  private readonly baseUrl = inject(API_BASE_URL);
+  private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
   readonly gameId = input.required<string>();
   private readonly gameIdAsNumber = computed(() => Number(this.gameId()));
@@ -97,7 +105,42 @@ export class ActiveGamePageComponent implements OnInit {
 
   ngOnInit(): void {
     this.state.load(this.gameIdAsNumber());
+    if (this.isBrowser) {
+      window.addEventListener('pagehide', this.handlePageHide);
+    }
   }
+
+  ngOnDestroy(): void {
+    if (this.isBrowser) {
+      window.removeEventListener('pagehide', this.handlePageHide);
+    }
+  }
+
+  /**
+   * Best-effort abandon on browser refresh/close/navigate-away. `pagehide` (unlike
+   * `visibilitychange`) doesn't fire on same-document Angular route changes or on a tab-switch,
+   * so this only triggers on an actual unload - exactly the case the client can catch that
+   * `GameLifecycleReaper` otherwise has to wait out an idle timeout for. `fetch` with
+   * `keepalive: true` is used instead of `HttpClient` because the request must be able to
+   * survive the page unloading before it completes.
+   */
+  private readonly handlePageHide = (): void => {
+    const game = this.state.game();
+    if (!game || game.status !== 'IN_PROGRESS') {
+      return;
+    }
+    const token = this.tokenStorage.getAccessToken();
+    if (!token) {
+      return;
+    }
+    fetch(`${this.baseUrl}/games/${this.gameIdAsNumber()}/abandon`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {
+      // Best-effort - GameLifecycleReaper is the backstop if this doesn't land.
+    });
+  };
 
   protected retryLoad(): void {
     this.state.load(this.gameIdAsNumber());

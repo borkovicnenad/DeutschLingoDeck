@@ -24,6 +24,11 @@ cors:
   # staging/production once those frontend URLs are known.
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
 
+app:
+  game:
+    # How long an IN_PROGRESS game may sit idle before GameLifecycleReaper marks it ABANDONED.
+    idle-timeout: ${GAME_IDLE_TIMEOUT:PT30M}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

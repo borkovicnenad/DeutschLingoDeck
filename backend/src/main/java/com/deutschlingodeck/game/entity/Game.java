@@ -55,12 +55,24 @@ public class Game {
 	private OffsetDateTime finishedAt;
 
 	/**
-	 * Comma-separated, ordered card ids dealt for this game at creation time.
-	 * {@code answeredCards} indexes into this list to find the current card,
-	 * since due/new/resting cards are only decided once, at deal time.
+	 * Comma-separated, ordered card ids dealt for this game. {@code answeredCards} indexes into
+	 * this list to find the current card. The list can grow mid-game: {@code RequeuePolicy}
+	 * appends a card id again later in the list when it's answered incorrectly, so a missed card
+	 * resurfaces within the same session instead of only via the next game's spaced repetition.
 	 */
 	@Column(name = "deck_card_ids")
 	private String deckCardIds;
+
+	/**
+	 * Last time the user interacted with this game (creation or an answer). Used by
+	 * {@code GameLifecycleReaper} to auto-abandon sessions the client never explicitly finished
+	 * or abandoned (browser crash, force-quit, etc).
+	 */
+	@Column(name = "last_activity_at", nullable = false)
+	private OffsetDateTime lastActivityAt;
+
+	@Column(name = "game_mode", nullable = false)
+	private String gameMode;
 
 	protected Game() {
 	}
@@ -157,5 +169,21 @@ public class Game {
 
 	public void setDeckCardIds(List<Long> cardIds) {
 		this.deckCardIds = cardIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+	}
+
+	public OffsetDateTime getLastActivityAt() {
+		return lastActivityAt;
+	}
+
+	public void setLastActivityAt(OffsetDateTime lastActivityAt) {
+		this.lastActivityAt = lastActivityAt;
+	}
+
+	public String getGameMode() {
+		return gameMode;
+	}
+
+	public void setGameMode(String gameMode) {
+		this.gameMode = gameMode;
 	}
 }

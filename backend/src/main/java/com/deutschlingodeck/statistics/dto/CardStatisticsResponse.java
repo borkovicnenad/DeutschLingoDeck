@@ -11,6 +11,7 @@ public record CardStatisticsResponse(
 		Integer timesIncorrect,
 		Double successRate,
 		OffsetDateTime lastShownAt,
-		OffsetDateTime lastCorrectAt
+		OffsetDateTime lastCorrectAt,
+		Double averageResponseTimeMs
 ) {
 }

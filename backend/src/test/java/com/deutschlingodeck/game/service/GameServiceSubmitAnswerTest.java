@@ -14,6 +14,8 @@ import com.deutschlingodeck.game.dto.CardRevealResponse;
 import com.deutschlingodeck.game.dto.GameStatus;
 import com.deutschlingodeck.game.dto.SubmitAnswerRequest;
 import com.deutschlingodeck.game.dto.ValidationResult;
+import com.deutschlingodeck.game.engine.DeckBuilder;
+import com.deutschlingodeck.game.engine.RequeuePolicy;
 import com.deutschlingodeck.game.entity.Game;
 import com.deutschlingodeck.game.mapper.GameMapper;
 import com.deutschlingodeck.game.progress.CardProgressRepository;
@@ -58,6 +60,10 @@ class GameServiceSubmitAnswerTest {
 	@Mock
 	private SpacedRepetitionScheduler scheduler;
 	@Mock
+	private DeckBuilder deckBuilder;
+	@Mock
+	private RequeuePolicy requeuePolicy;
+	@Mock
 	private GamificationService gamificationService;
 	@Mock
 	private CurrentUserProvider currentUserProvider;
@@ -68,8 +74,8 @@ class GameServiceSubmitAnswerTest {
 	void setUp() {
 		service = new GameServiceImpl(
 				gameRepository, gameAnswerRepository, dictionaryRepository, cardRepository, cardProgressRepository,
-				userRepository, gameMapper, answerValidator, scheduler, gamificationService, currentUserProvider,
-				new OwnershipGuard());
+				userRepository, gameMapper, answerValidator, scheduler, deckBuilder, requeuePolicy,
+				gamificationService, currentUserProvider, new OwnershipGuard());
 	}
 
 	@Test

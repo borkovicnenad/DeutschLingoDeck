@@ -8,6 +8,7 @@ public record CardAnswerAggregate(
 		Long timesShown,
 		Long timesCorrect,
 		OffsetDateTime lastShownAt,
-		OffsetDateTime lastCorrectAt
+		OffsetDateTime lastCorrectAt,
+		Double averageResponseTimeMs
 ) {
 }

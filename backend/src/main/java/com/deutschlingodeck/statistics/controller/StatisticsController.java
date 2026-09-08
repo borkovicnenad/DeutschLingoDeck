@@ -6,6 +6,7 @@ import com.deutschlingodeck.statistics.dto.CardStatisticsResponse;
 import com.deutschlingodeck.statistics.dto.DashboardStatisticsResponse;
 import com.deutschlingodeck.statistics.dto.DictionaryStatisticsResponse;
 import com.deutschlingodeck.statistics.dto.LearningHistoryResponse;
+import com.deutschlingodeck.statistics.dto.MasteryBreakdownResponse;
 import com.deutschlingodeck.statistics.service.StatisticsService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -30,16 +31,20 @@ public class StatisticsController {
 	@GetMapping
 	public ResponseEntity<DashboardStatisticsResponse> getDashboardStatistics(
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-		return ResponseEntity.ok(statisticsService.getDashboardStatistics(from, to));
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+			@RequestParam(required = false) Long dictionaryId,
+			@RequestParam(required = false) String gameMode) {
+		return ResponseEntity.ok(statisticsService.getDashboardStatistics(from, to, dictionaryId, gameMode));
 	}
 
 	@GetMapping("/cards")
 	public ResponseEntity<PageResponse<CardStatisticsResponse>> getCardStatistics(
 			@RequestParam(required = false) Long dictionaryId,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE) int page,
 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE_SIZE) int size) {
-		return ResponseEntity.ok(statisticsService.getCardStatistics(dictionaryId, page, size));
+		return ResponseEntity.ok(statisticsService.getCardStatistics(dictionaryId, from, to, page, size));
 	}
 
 	@GetMapping("/dictionaries")
@@ -47,12 +52,20 @@ public class StatisticsController {
 		return ResponseEntity.ok(statisticsService.getDictionaryStatistics());
 	}
 
+	@GetMapping("/mastery")
+	public ResponseEntity<MasteryBreakdownResponse> getMasteryBreakdown(
+			@RequestParam(required = false) Long dictionaryId) {
+		return ResponseEntity.ok(statisticsService.getMasteryBreakdown(dictionaryId));
+	}
+
 	@GetMapping("/history")
 	public ResponseEntity<PageResponse<LearningHistoryResponse>> getLearningHistory(
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+			@RequestParam(required = false) Long dictionaryId,
+			@RequestParam(required = false) String gameMode,
 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE) int page,
 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE_SIZE) int size) {
-		return ResponseEntity.ok(statisticsService.getLearningHistory(from, to, page, size));
+		return ResponseEntity.ok(statisticsService.getLearningHistory(from, to, dictionaryId, gameMode, page, size));
 	}
 }

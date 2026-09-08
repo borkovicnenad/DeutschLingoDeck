@@ -22,6 +22,8 @@ public interface CardRepository extends JpaRepository<Card, Long> {
 
 	int countByDictionaryId(Long dictionaryId);
 
+	int countByDictionaryOwnerId(Long ownerId);
+
 	@Query("SELECT COALESCE(MAX(c.position), -1) FROM Card c WHERE c.dictionary.id = :dictionaryId")
 	int findMaxPositionByDictionaryId(@Param("dictionaryId") Long dictionaryId);
 

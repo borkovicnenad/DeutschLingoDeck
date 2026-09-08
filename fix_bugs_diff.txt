@@ -1,0 +1,1668 @@
+diff --git a/backend/src/main/java/com/deutschlingodeck/BackendApplication.java b/backend/src/main/java/com/deutschlingodeck/BackendApplication.java
+index be081f2..b4bb62e 100644
+--- a/backend/src/main/java/com/deutschlingodeck/BackendApplication.java
++++ b/backend/src/main/java/com/deutschlingodeck/BackendApplication.java
+@@ -2,8 +2,10 @@ package com.deutschlingodeck;
+ 
+ import org.springframework.boot.SpringApplication;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
++import org.springframework.scheduling.annotation.EnableScheduling;
+ 
+ @SpringBootApplication
++@EnableScheduling
+ public class BackendApplication {
+ 
+ 	public static void main(String[] args) {
+diff --git a/backend/src/main/java/com/deutschlingodeck/dictionary/repository/CardRepository.java b/backend/src/main/java/com/deutschlingodeck/dictionary/repository/CardRepository.java
+index f6a0e6c..ad404de 100644
+--- a/backend/src/main/java/com/deutschlingodeck/dictionary/repository/CardRepository.java
++++ b/backend/src/main/java/com/deutschlingodeck/dictionary/repository/CardRepository.java
+@@ -22,6 +22,8 @@ public interface CardRepository extends JpaRepository<Card, Long> {
+ 
+ 	int countByDictionaryId(Long dictionaryId);
+ 
++	int countByDictionaryOwnerId(Long ownerId);
++
+ 	@Query("SELECT COALESCE(MAX(c.position), -1) FROM Card c WHERE c.dictionary.id = :dictionaryId")
+ 	int findMaxPositionByDictionaryId(@Param("dictionaryId") Long dictionaryId);
+ 
+diff --git a/backend/src/main/java/com/deutschlingodeck/game/entity/Game.java b/backend/src/main/java/com/deutschlingodeck/game/entity/Game.java
+index e6c5590..fad8986 100644
+--- a/backend/src/main/java/com/deutschlingodeck/game/entity/Game.java
++++ b/backend/src/main/java/com/deutschlingodeck/game/entity/Game.java
+@@ -55,13 +55,25 @@ public class Game {
+ 	private OffsetDateTime finishedAt;
+ 
+ 	/**
+-	 * Comma-separated, ordered card ids dealt for this game at creation time.
+-	 * {@code answeredCards} indexes into this list to find the current card,
+-	 * since due/new/resting cards are only decided once, at deal time.
++	 * Comma-separated, ordered card ids dealt for this game. {@code answeredCards} indexes into
++	 * this list to find the current card. The list can grow mid-game: {@code RequeuePolicy}
++	 * appends a card id again later in the list when it's answered incorrectly, so a missed card
++	 * resurfaces within the same session instead of only via the next game's spaced repetition.
+ 	 */
+ 	@Column(name = "deck_card_ids")
+ 	private String deckCardIds;
+ 
++	/**
++	 * Last time the user interacted with this game (creation or an answer). Used by
++	 * {@code GameLifecycleReaper} to auto-abandon sessions the client never explicitly finished
++	 * or abandoned (browser crash, force-quit, etc).
++	 */
++	@Column(name = "last_activity_at", nullable = false)
++	private OffsetDateTime lastActivityAt;
++
++	@Column(name = "game_mode", nullable = false)
++	private String gameMode;
++
+ 	protected Game() {
+ 	}
+ 
+@@ -158,4 +170,20 @@ public class Game {
+ 	public void setDeckCardIds(List<Long> cardIds) {
+ 		this.deckCardIds = cardIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+ 	}
++
++	public OffsetDateTime getLastActivityAt() {
++		return lastActivityAt;
++	}
++
++	public void setLastActivityAt(OffsetDateTime lastActivityAt) {
++		this.lastActivityAt = lastActivityAt;
++	}
++
++	public String getGameMode() {
++		return gameMode;
++	}
++
++	public void setGameMode(String gameMode) {
++		this.gameMode = gameMode;
++	}
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/game/progress/CardProgressRepository.java b/backend/src/main/java/com/deutschlingodeck/game/progress/CardProgressRepository.java
+index db93ab9..953e1bb 100644
+--- a/backend/src/main/java/com/deutschlingodeck/game/progress/CardProgressRepository.java
++++ b/backend/src/main/java/com/deutschlingodeck/game/progress/CardProgressRepository.java
+@@ -25,6 +25,12 @@ public interface CardProgressRepository extends JpaRepository<CardProgress, Long
+ 			""")
+ 	List<Long> findReviewedCardIdsForDictionary(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
+ 
++	@Query("""
++			SELECT cp FROM CardProgress cp
++			WHERE cp.user.id = :userId AND cp.card.dictionary.id = :dictionaryId
++			""")
++	List<CardProgress> findAllForDictionary(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
++
+ 	@Query("""
+ 			SELECT COUNT(cp) FROM CardProgress cp
+ 			WHERE cp.user.id = :userId AND cp.dueDate <= :today
+@@ -40,4 +46,23 @@ public interface CardProgressRepository extends JpaRepository<CardProgress, Long
+ 
+ 	@Query("SELECT COUNT(cp) FROM CardProgress cp WHERE cp.user.id = :userId AND cp.intervalDays >= :masteredThreshold")
+ 	long countMasteredForUser(@Param("userId") Long userId, @Param("masteredThreshold") int masteredThreshold);
++
++	/** Backs the Mastery Breakdown tiers; {@code dictionaryId} is optional (null scopes to all of the user's dictionaries). */
++	@Query("""
++			SELECT COUNT(cp) FROM CardProgress cp
++			WHERE cp.user.id = :userId
++			  AND (:dictionaryId IS NULL OR cp.card.dictionary.id = :dictionaryId)
++			  AND cp.intervalDays >= :minInclusive AND cp.intervalDays <= :maxInclusive
++			""")
++	long countByIntervalDaysRange(
++			@Param("userId") Long userId,
++			@Param("dictionaryId") Long dictionaryId,
++			@Param("minInclusive") int minInclusive,
++			@Param("maxInclusive") int maxInclusive);
++
++	@Query("""
++			SELECT COUNT(cp) FROM CardProgress cp
++			WHERE cp.user.id = :userId AND (:dictionaryId IS NULL OR cp.card.dictionary.id = :dictionaryId)
++			""")
++	long countAllForUser(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/game/repository/CardAnswerAggregate.java b/backend/src/main/java/com/deutschlingodeck/game/repository/CardAnswerAggregate.java
+index 812f8d4..6ec70bb 100644
+--- a/backend/src/main/java/com/deutschlingodeck/game/repository/CardAnswerAggregate.java
++++ b/backend/src/main/java/com/deutschlingodeck/game/repository/CardAnswerAggregate.java
+@@ -8,6 +8,7 @@ public record CardAnswerAggregate(
+ 		Long timesShown,
+ 		Long timesCorrect,
+ 		OffsetDateTime lastShownAt,
+-		OffsetDateTime lastCorrectAt
++		OffsetDateTime lastCorrectAt,
++		Double averageResponseTimeMs
+ ) {
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/game/repository/GameAnswerRepository.java b/backend/src/main/java/com/deutschlingodeck/game/repository/GameAnswerRepository.java
+index d74a4c8..60ca0f8 100644
+--- a/backend/src/main/java/com/deutschlingodeck/game/repository/GameAnswerRepository.java
++++ b/backend/src/main/java/com/deutschlingodeck/game/repository/GameAnswerRepository.java
+@@ -39,13 +39,20 @@ public interface GameAnswerRepository extends JpaRepository<GameAnswer, Long> {
+ 	long countCorrectByUserAndDictionary(@Param("userId") Long userId, @Param("dictionaryId") Long dictionaryId);
+ 
+ 	/** One row per card in {@code cardIds} that has at least one answer from this user. */
++	/** {@code start}/{@code end} must be resolved (non-null) - callers default to an all-time range when the user gave no filter. */
+ 	@Query("""
+ 			SELECT new com.deutschlingodeck.game.repository.CardAnswerAggregate(
+ 			    a.card.id, COUNT(a), SUM(CASE WHEN a.correct = true THEN 1L ELSE 0L END),
+-			    MAX(a.answeredAt), MAX(CASE WHEN a.correct = true THEN a.answeredAt ELSE NULL END))
++			    MAX(a.answeredAt), MAX(CASE WHEN a.correct = true THEN a.answeredAt ELSE NULL END),
++			    AVG(a.responseTimeMs))
+ 			FROM GameAnswer a
+ 			WHERE a.game.user.id = :userId AND a.card.id IN :cardIds
++			  AND a.answeredAt >= :start AND a.answeredAt <= :end
+ 			GROUP BY a.card.id
+ 			""")
+-	List<CardAnswerAggregate> aggregateForCards(@Param("userId") Long userId, @Param("cardIds") List<Long> cardIds);
++	List<CardAnswerAggregate> aggregateForCards(
++			@Param("userId") Long userId,
++			@Param("cardIds") List<Long> cardIds,
++			@Param("start") OffsetDateTime start,
++			@Param("end") OffsetDateTime end);
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/game/repository/GameRepository.java b/backend/src/main/java/com/deutschlingodeck/game/repository/GameRepository.java
+index bb4862b..ea5e8ee 100644
+--- a/backend/src/main/java/com/deutschlingodeck/game/repository/GameRepository.java
++++ b/backend/src/main/java/com/deutschlingodeck/game/repository/GameRepository.java
+@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
+ 
+ import java.time.OffsetDateTime;
+ import java.util.List;
++import java.util.Optional;
+ 
+ public interface GameRepository extends JpaRepository<Game, Long> {
+ 
+@@ -17,10 +18,14 @@ public interface GameRepository extends JpaRepository<Game, Long> {
+ 
+ 	long countByUserIdAndDictionaryIdAndStatus(Long userId, Long dictionaryId, GameStatus status);
+ 
++	Optional<Game> findByUserIdAndStatus(Long userId, GameStatus status);
++
+ 	List<Game> findByUserIdAndStartedAtBetween(Long userId, OffsetDateTime start, OffsetDateTime end);
+ 
+ 	Page<Game> findByUserIdAndStartedAtBetween(Long userId, OffsetDateTime start, OffsetDateTime end, Pageable pageable);
+ 
++	List<Game> findByStatusAndLastActivityAtBefore(GameStatus status, OffsetDateTime cutoff);
++
+ 	@Query("""
+ 			SELECT g FROM Game g
+ 			WHERE g.user.id = :userId
+@@ -33,4 +38,35 @@ public interface GameRepository extends JpaRepository<Game, Long> {
+ 			@Param("status") GameStatus status,
+ 			@Param("dictionaryId") Long dictionaryId,
+ 			Pageable pageable);
++
++	/** Backs both the dashboard overview and the Learning History table so their filters stay in sync. */
++	@Query("""
++			SELECT g FROM Game g
++			WHERE g.user.id = :userId
++			  AND g.startedAt >= :start AND g.startedAt <= :end
++			  AND (:dictionaryId IS NULL OR g.dictionary.id = :dictionaryId)
++			  AND (:gameMode IS NULL OR g.gameMode = :gameMode)
++			""")
++	List<Game> findForStatistics(
++			@Param("userId") Long userId,
++			@Param("start") OffsetDateTime start,
++			@Param("end") OffsetDateTime end,
++			@Param("dictionaryId") Long dictionaryId,
++			@Param("gameMode") String gameMode);
++
++	@Query("""
++			SELECT g FROM Game g
++			WHERE g.user.id = :userId
++			  AND g.startedAt >= :start AND g.startedAt <= :end
++			  AND (:dictionaryId IS NULL OR g.dictionary.id = :dictionaryId)
++			  AND (:gameMode IS NULL OR g.gameMode = :gameMode)
++			ORDER BY g.startedAt DESC
++			""")
++	Page<Game> findForStatistics(
++			@Param("userId") Long userId,
++			@Param("start") OffsetDateTime start,
++			@Param("end") OffsetDateTime end,
++			@Param("dictionaryId") Long dictionaryId,
++			@Param("gameMode") String gameMode,
++			Pageable pageable);
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/game/service/GameServiceImpl.java b/backend/src/main/java/com/deutschlingodeck/game/service/GameServiceImpl.java
+index 6bc5806..3303e18 100644
+--- a/backend/src/main/java/com/deutschlingodeck/game/service/GameServiceImpl.java
++++ b/backend/src/main/java/com/deutschlingodeck/game/service/GameServiceImpl.java
+@@ -21,6 +21,8 @@ import com.deutschlingodeck.game.dto.GameStatus;
+ import com.deutschlingodeck.game.dto.GameSummaryResponse;
+ import com.deutschlingodeck.game.dto.SubmitAnswerRequest;
+ import com.deutschlingodeck.game.dto.ValidationResult;
++import com.deutschlingodeck.game.engine.DeckBuilder;
++import com.deutschlingodeck.game.engine.RequeuePolicy;
+ import com.deutschlingodeck.game.entity.Game;
+ import com.deutschlingodeck.game.entity.GameAnswer;
+ import com.deutschlingodeck.game.mapper.GameMapper;
+@@ -37,18 +39,13 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.time.Duration;
+-import java.time.LocalDate;
+ import java.time.OffsetDateTime;
+-import java.util.ArrayList;
+-import java.util.HashSet;
+ import java.util.List;
+-import java.util.Set;
+ 
+ @Service
+ public class GameServiceImpl implements GameService {
+ 
+-	/** Cap on how many cards a single game deals, even if more are due. */
+-	private static final int SESSION_CARD_LIMIT = 20;
++	private static final String DEFAULT_GAME_MODE = "STANDARD";
+ 
+ 	/** The language a card's {@code article}/{@code sourceText} are always recorded in. */
+ 	private static final String GERMAN_LANGUAGE = "de";
+@@ -62,6 +59,8 @@ public class GameServiceImpl implements GameService {
+ 	private final GameMapper gameMapper;
+ 	private final AnswerValidator answerValidator;
+ 	private final SpacedRepetitionScheduler scheduler;
++	private final DeckBuilder deckBuilder;
++	private final RequeuePolicy requeuePolicy;
+ 	private final GamificationService gamificationService;
+ 	private final CurrentUserProvider currentUserProvider;
+ 	private final OwnershipGuard ownershipGuard;
+@@ -76,6 +75,8 @@ public class GameServiceImpl implements GameService {
+ 			GameMapper gameMapper,
+ 			AnswerValidator answerValidator,
+ 			SpacedRepetitionScheduler scheduler,
++			DeckBuilder deckBuilder,
++			RequeuePolicy requeuePolicy,
+ 			GamificationService gamificationService,
+ 			CurrentUserProvider currentUserProvider,
+ 			OwnershipGuard ownershipGuard) {
+@@ -88,6 +89,8 @@ public class GameServiceImpl implements GameService {
+ 		this.gameMapper = gameMapper;
+ 		this.answerValidator = answerValidator;
+ 		this.scheduler = scheduler;
++		this.deckBuilder = deckBuilder;
++		this.requeuePolicy = requeuePolicy;
+ 		this.gamificationService = gamificationService;
+ 		this.currentUserProvider = currentUserProvider;
+ 		this.ownershipGuard = ownershipGuard;
+@@ -102,7 +105,20 @@ public class GameServiceImpl implements GameService {
+ 				.orElseThrow(() -> ResourceNotFoundException.of("Dictionary", request.dictionaryId()));
+ 		ownershipGuard.requireOwner(dictionary.getOwner().getId(), userId);
+ 
+-		List<Card> deck = buildDeck(userId, dictionary.getId());
++		// Starting a new game completes any stale one instead of leaving it stuck IN_PROGRESS
++		// forever; the partial unique index on (user_id) WHERE status = 'IN_PROGRESS' is the
++		// last-resort guard against a race between two concurrent createGame calls. The abandon
++		// must be flushed before the insert below: Game's IDENTITY id generation forces Hibernate
++		// to issue that INSERT immediately rather than at end-of-transaction, so without an
++		// explicit flush here it can race ahead of this pending UPDATE and trip the unique index.
++		OffsetDateTime now = OffsetDateTime.now();
++		gameRepository.findByUserIdAndStatus(userId, GameStatus.IN_PROGRESS).ifPresent(stale -> {
++			stale.setStatus(GameStatus.ABANDONED);
++			stale.setFinishedAt(now);
++			gameRepository.saveAndFlush(stale);
++		});
++
++		List<Card> deck = deckBuilder.buildDeck(userId, dictionary.getId());
+ 		if (deck.isEmpty()) {
+ 			throw new ConflictException("This dictionary has no cards yet - add or import some before starting a game");
+ 		}
+@@ -112,7 +128,9 @@ public class GameServiceImpl implements GameService {
+ 		game.setAnsweredCards(0);
+ 		game.setCorrectAnswers(0);
+ 		game.setIncorrectAnswers(0);
+-		game.setStartedAt(OffsetDateTime.now());
++		game.setStartedAt(now);
++		game.setLastActivityAt(now);
++		game.setGameMode(request.gameMode() == null || request.gameMode().isBlank() ? DEFAULT_GAME_MODE : request.gameMode());
+ 		game.setDeckCardIds(deck.stream().map(Card::getId).toList());
+ 		game = gameRepository.save(game);
+ 
+@@ -160,9 +178,11 @@ public class GameServiceImpl implements GameService {
+ 		answer.setAnsweredAt(now);
+ 		gameAnswerRepository.save(answer);
+ 
++		requeuePolicy.onAnswer(game, card.getId(), correct, index);
+ 		game.setAnsweredCards(index + 1);
+ 		game.setCorrectAnswers(game.getCorrectAnswers() + (correct ? 1 : 0));
+ 		game.setIncorrectAnswers(game.getIncorrectAnswers() + (correct ? 0 : 1));
++		game.setLastActivityAt(now);
+ 
+ 		CardProgress progress = cardProgressRepository.findByUserIdAndCardId(userId, card.getId())
+ 				.orElseGet(() -> new CardProgress(userRepository.getReferenceById(userId), card));
+@@ -211,45 +231,6 @@ public class GameServiceImpl implements GameService {
+ 		return buildSummary(loadOwnedGame(gameId));
+ 	}
+ 
+-	/**
+-	 * Deals due cards first (previously reviewed, {@code due_date} today or earlier), then
+-	 * never-reviewed cards, then not-yet-due cards, capped at {@link #SESSION_CARD_LIMIT} so a
+-	 * large dictionary never dumps every card into a single session.
+-	 */
+-	private List<Card> buildDeck(Long userId, Long dictionaryId) {
+-		List<Card> allCards = cardRepository.findByDictionaryIdOrderByPosition(dictionaryId);
+-		if (allCards.isEmpty()) {
+-			return List.of();
+-		}
+-
+-		Set<Long> dueCardIds = new HashSet<>();
+-		for (CardProgress progress : cardProgressRepository.findDueForDictionary(userId, dictionaryId, LocalDate.now())) {
+-			dueCardIds.add(progress.getCard().getId());
+-		}
+-		Set<Long> reviewedCardIds = new HashSet<>(cardProgressRepository.findReviewedCardIdsForDictionary(userId, dictionaryId));
+-
+-		int sessionCap = Math.min(allCards.size(), SESSION_CARD_LIMIT);
+-		List<Card> deck = new ArrayList<>();
+-		for (Card card : allCards) {
+-			if (dueCardIds.contains(card.getId())) {
+-				deck.add(card);
+-			}
+-		}
+-		addUpTo(deck, allCards.stream().filter(c -> !reviewedCardIds.contains(c.getId())).toList(), sessionCap);
+-		addUpTo(deck, allCards.stream().filter(c -> reviewedCardIds.contains(c.getId()) && !dueCardIds.contains(c.getId())).toList(), sessionCap);
+-
+-		return deck.size() > sessionCap ? new ArrayList<>(deck.subList(0, sessionCap)) : deck;
+-	}
+-
+-	private void addUpTo(List<Card> deck, List<Card> candidates, int cap) {
+-		for (Card candidate : candidates) {
+-			if (deck.size() >= cap) {
+-				return;
+-			}
+-			deck.add(candidate);
+-		}
+-	}
+-
+ 	private Game loadOwnedGame(Long gameId) {
+ 		Game game = gameRepository.findById(gameId).orElseThrow(() -> ResourceNotFoundException.of("Game", gameId));
+ 		ownershipGuard.requireOwner(game.getUser().getId(), currentUserProvider.getUserId());
+diff --git a/backend/src/main/java/com/deutschlingodeck/statistics/controller/StatisticsController.java b/backend/src/main/java/com/deutschlingodeck/statistics/controller/StatisticsController.java
+index ceb9af2..2335ab3 100644
+--- a/backend/src/main/java/com/deutschlingodeck/statistics/controller/StatisticsController.java
++++ b/backend/src/main/java/com/deutschlingodeck/statistics/controller/StatisticsController.java
+@@ -6,6 +6,7 @@ import com.deutschlingodeck.statistics.dto.CardStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.DashboardStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.DictionaryStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.LearningHistoryResponse;
++import com.deutschlingodeck.statistics.dto.MasteryBreakdownResponse;
+ import com.deutschlingodeck.statistics.service.StatisticsService;
+ import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.ResponseEntity;
+@@ -30,16 +31,20 @@ public class StatisticsController {
+ 	@GetMapping
+ 	public ResponseEntity<DashboardStatisticsResponse> getDashboardStatistics(
+ 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+-			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+-		return ResponseEntity.ok(statisticsService.getDashboardStatistics(from, to));
++			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
++			@RequestParam(required = false) Long dictionaryId,
++			@RequestParam(required = false) String gameMode) {
++		return ResponseEntity.ok(statisticsService.getDashboardStatistics(from, to, dictionaryId, gameMode));
+ 	}
+ 
+ 	@GetMapping("/cards")
+ 	public ResponseEntity<PageResponse<CardStatisticsResponse>> getCardStatistics(
+ 			@RequestParam(required = false) Long dictionaryId,
++			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+ 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE) int page,
+ 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE_SIZE) int size) {
+-		return ResponseEntity.ok(statisticsService.getCardStatistics(dictionaryId, page, size));
++		return ResponseEntity.ok(statisticsService.getCardStatistics(dictionaryId, from, to, page, size));
+ 	}
+ 
+ 	@GetMapping("/dictionaries")
+@@ -47,12 +52,20 @@ public class StatisticsController {
+ 		return ResponseEntity.ok(statisticsService.getDictionaryStatistics());
+ 	}
+ 
++	@GetMapping("/mastery")
++	public ResponseEntity<MasteryBreakdownResponse> getMasteryBreakdown(
++			@RequestParam(required = false) Long dictionaryId) {
++		return ResponseEntity.ok(statisticsService.getMasteryBreakdown(dictionaryId));
++	}
++
+ 	@GetMapping("/history")
+ 	public ResponseEntity<PageResponse<LearningHistoryResponse>> getLearningHistory(
+ 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+ 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
++			@RequestParam(required = false) Long dictionaryId,
++			@RequestParam(required = false) String gameMode,
+ 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE) int page,
+ 			@RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE_SIZE) int size) {
+-		return ResponseEntity.ok(statisticsService.getLearningHistory(from, to, page, size));
++		return ResponseEntity.ok(statisticsService.getLearningHistory(from, to, dictionaryId, gameMode, page, size));
+ 	}
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/statistics/dto/CardStatisticsResponse.java b/backend/src/main/java/com/deutschlingodeck/statistics/dto/CardStatisticsResponse.java
+index 70467b3..1e4e0da 100644
+--- a/backend/src/main/java/com/deutschlingodeck/statistics/dto/CardStatisticsResponse.java
++++ b/backend/src/main/java/com/deutschlingodeck/statistics/dto/CardStatisticsResponse.java
+@@ -11,6 +11,7 @@ public record CardStatisticsResponse(
+ 		Integer timesIncorrect,
+ 		Double successRate,
+ 		OffsetDateTime lastShownAt,
+-		OffsetDateTime lastCorrectAt
++		OffsetDateTime lastCorrectAt,
++		Double averageResponseTimeMs
+ ) {
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsService.java b/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsService.java
+index 61d54d8..0eafa90 100644
+--- a/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsService.java
++++ b/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsService.java
+@@ -5,17 +5,21 @@ import com.deutschlingodeck.statistics.dto.CardStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.DashboardStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.DictionaryStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.LearningHistoryResponse;
++import com.deutschlingodeck.statistics.dto.MasteryBreakdownResponse;
+ 
+ import java.time.LocalDate;
+ import java.util.List;
+ 
+ public interface StatisticsService {
+ 
+-	DashboardStatisticsResponse getDashboardStatistics(LocalDate from, LocalDate to);
++	DashboardStatisticsResponse getDashboardStatistics(LocalDate from, LocalDate to, Long dictionaryId, String gameMode);
+ 
+-	PageResponse<CardStatisticsResponse> getCardStatistics(Long dictionaryId, int page, int size);
++	PageResponse<CardStatisticsResponse> getCardStatistics(Long dictionaryId, LocalDate from, LocalDate to, int page, int size);
+ 
+ 	List<DictionaryStatisticsResponse> getDictionaryStatistics();
+ 
+-	PageResponse<LearningHistoryResponse> getLearningHistory(LocalDate from, LocalDate to, int page, int size);
++	MasteryBreakdownResponse getMasteryBreakdown(Long dictionaryId);
++
++	PageResponse<LearningHistoryResponse> getLearningHistory(
++			LocalDate from, LocalDate to, Long dictionaryId, String gameMode, int page, int size);
+ }
+diff --git a/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsServiceImpl.java b/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsServiceImpl.java
+index 8cbf3a9..941f11c 100644
+--- a/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsServiceImpl.java
++++ b/backend/src/main/java/com/deutschlingodeck/statistics/service/StatisticsServiceImpl.java
+@@ -11,7 +11,6 @@ import com.deutschlingodeck.dictionary.repository.CardRepository;
+ import com.deutschlingodeck.dictionary.repository.DictionaryRepository;
+ import com.deutschlingodeck.game.dto.GameStatus;
+ import com.deutschlingodeck.game.entity.Game;
+-import com.deutschlingodeck.game.entity.GameAnswer;
+ import com.deutschlingodeck.game.progress.CardProgress;
+ import com.deutschlingodeck.game.progress.CardProgressRepository;
+ import com.deutschlingodeck.game.repository.CardAnswerAggregate;
+@@ -23,6 +22,7 @@ import com.deutschlingodeck.statistics.dto.CardStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.DashboardStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.DictionaryStatisticsResponse;
+ import com.deutschlingodeck.statistics.dto.LearningHistoryResponse;
++import com.deutschlingodeck.statistics.dto.MasteryBreakdownResponse;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageRequest;
+ import org.springframework.data.domain.Pageable;
+@@ -75,16 +75,21 @@ public class StatisticsServiceImpl implements StatisticsService {
+ 	}
+ 
+ 	@Override
+-	public DashboardStatisticsResponse getDashboardStatistics(LocalDate from, LocalDate to) {
++	public DashboardStatisticsResponse getDashboardStatistics(LocalDate from, LocalDate to, Long dictionaryId, String gameMode) {
+ 		Long userId = currentUserProvider.getUserId();
++		if (dictionaryId != null) {
++			requireOwnedDictionary(dictionaryId, userId);
++		}
+ 		OffsetDateTime[] range = resolveRange(from, to);
+ 
+-		List<Game> games = gameRepository.findByUserIdAndStartedAtBetween(userId, range[0], range[1]);
+-		List<GameAnswer> answers = gameAnswerRepository.findByUserAndAnsweredAtBetween(userId, range[0], range[1]);
++		List<Game> games = gameRepository.findForStatistics(userId, range[0], range[1], dictionaryId, gameMode);
+ 
+-		int totalAnswers = answers.size();
+-		int totalCorrect = (int) answers.stream().filter(GameAnswer::isCorrect).count();
+-		int totalIncorrect = totalAnswers - totalCorrect;
++		// Derived from each game's own running counters rather than a separate GameAnswer query,
++		// so the numbers always reflect exactly the same set of games the dictionary/game-mode
++		// filters selected above.
++		int totalCorrect = games.stream().mapToInt(game -> orZero(game.getCorrectAnswers())).sum();
++		int totalIncorrect = games.stream().mapToInt(game -> orZero(game.getIncorrectAnswers())).sum();
++		int totalAnswers = totalCorrect + totalIncorrect;
+ 		Double overallAccuracy = totalAnswers == 0 ? null : (double) totalCorrect / totalAnswers;
+ 
+ 		long totalStudyTimeSeconds = games.stream()
+@@ -104,22 +109,21 @@ public class StatisticsServiceImpl implements StatisticsService {
+ 	}
+ 
+ 	@Override
+-	public PageResponse<CardStatisticsResponse> getCardStatistics(Long dictionaryId, int page, int size) {
++	public PageResponse<CardStatisticsResponse> getCardStatistics(Long dictionaryId, LocalDate from, LocalDate to, int page, int size) {
+ 		Long userId = currentUserProvider.getUserId();
+ 		Pageable pageable = PageRequest.of(page, size);
+ 
+ 		Page<Card> cards;
+ 		if (dictionaryId != null) {
+-			Dictionary dictionary = dictionaryRepository.findById(dictionaryId)
+-					.filter(d -> !d.isDeleted())
+-					.orElseThrow(() -> ResourceNotFoundException.of("Dictionary", dictionaryId));
+-			ownershipGuard.requireOwner(dictionary.getOwner().getId(), userId);
++			requireOwnedDictionary(dictionaryId, userId);
+ 			cards = cardRepository.findByDictionaryId(dictionaryId, pageable);
+ 		} else {
+ 			cards = cardRepository.findByDictionaryOwnerId(userId, pageable);
+ 		}
+ 
+-		Map<Long, CardAnswerAggregate> aggregates = aggregateFor(userId, cards.getContent().stream().map(Card::getId).toList());
++		OffsetDateTime[] range = resolveRange(from, to);
++		Map<Long, CardAnswerAggregate> aggregates =
++				aggregateFor(userId, cards.getContent().stream().map(Card::getId).toList(), range[0], range[1]);
+ 		return PageMapper.toPageResponse(cards, card -> toCardStatisticsResponse(card, aggregates.get(card.getId())));
+ 	}
+ 
+@@ -131,14 +135,48 @@ public class StatisticsServiceImpl implements StatisticsService {
+ 	}
+ 
+ 	@Override
+-	public PageResponse<LearningHistoryResponse> getLearningHistory(LocalDate from, LocalDate to, int page, int size) {
++	public MasteryBreakdownResponse getMasteryBreakdown(Long dictionaryId) {
++		Long userId = currentUserProvider.getUserId();
++		if (dictionaryId != null) {
++			requireOwnedDictionary(dictionaryId, userId);
++		}
++
++		int totalCards = dictionaryId != null
++				? cardRepository.countByDictionaryId(dictionaryId)
++				: cardRepository.countByDictionaryOwnerId(userId);
++
++		int mastered = (int) cardProgressRepository.countByIntervalDaysRange(
++				userId, dictionaryId, CardProgress.MASTERED_INTERVAL_DAYS_THRESHOLD, Integer.MAX_VALUE);
++		int strong = (int) cardProgressRepository.countByIntervalDaysRange(
++				userId, dictionaryId, 7, CardProgress.MASTERED_INTERVAL_DAYS_THRESHOLD - 1);
++		int familiar = (int) cardProgressRepository.countByIntervalDaysRange(userId, dictionaryId, 2, 6);
++		int learning = (int) cardProgressRepository.countByIntervalDaysRange(userId, dictionaryId, 0, 1);
++		int reviewed = (int) cardProgressRepository.countAllForUser(userId, dictionaryId);
++		int newCount = Math.max(0, totalCards - reviewed);
++
++		return new MasteryBreakdownResponse(newCount, learning, familiar, strong, mastered, totalCards);
++	}
++
++	@Override
++	public PageResponse<LearningHistoryResponse> getLearningHistory(
++			LocalDate from, LocalDate to, Long dictionaryId, String gameMode, int page, int size) {
+ 		Long userId = currentUserProvider.getUserId();
++		if (dictionaryId != null) {
++			requireOwnedDictionary(dictionaryId, userId);
++		}
+ 		OffsetDateTime[] range = resolveRange(from, to);
+ 		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "startedAt"));
+-		Page<Game> games = gameRepository.findByUserIdAndStartedAtBetween(userId, range[0], range[1], pageable);
++		Page<Game> games = gameRepository.findForStatistics(userId, range[0], range[1], dictionaryId, gameMode, pageable);
+ 		return PageMapper.toPageResponse(games, this::toLearningHistoryResponse);
+ 	}
+ 
++	private void requireOwnedDictionary(Long dictionaryId, Long userId) {
++		Dictionary dictionary = dictionaryRepository.findById(dictionaryId)
++				.filter(d -> !d.isDeleted())
++				.orElseThrow(() -> ResourceNotFoundException.of("Dictionary", dictionaryId));
++		ownershipGuard.requireOwner(dictionary.getOwner().getId(), userId);
++	}
++
+ 	private DictionaryStatisticsResponse toDictionaryStatistics(Long userId, Dictionary dictionary) {
+ 		Long dictionaryId = dictionary.getId();
+ 		int completedGames = (int) gameRepository.countByUserIdAndDictionaryIdAndStatus(userId, dictionaryId, GameStatus.FINISHED);
+@@ -150,7 +188,8 @@ public class StatisticsServiceImpl implements StatisticsService {
+ 				userId, dictionaryId, CardProgress.MASTERED_INTERVAL_DAYS_THRESHOLD);
+ 
+ 		List<Long> cardIds = cardRepository.findByDictionaryIdOrderByPosition(dictionaryId).stream().map(Card::getId).toList();
+-		long difficultCards = aggregateFor(userId, cardIds).values().stream()
++		OffsetDateTime[] allTime = resolveRange(null, null);
++		long difficultCards = aggregateFor(userId, cardIds, allTime[0], allTime[1]).values().stream()
+ 				.filter(agg -> agg.timesShown() >= DIFFICULT_CARD_MIN_ATTEMPTS)
+ 				.filter(agg -> (double) agg.timesCorrect() / agg.timesShown() < DIFFICULT_CARD_SUCCESS_RATE_THRESHOLD)
+ 				.count();
+@@ -160,11 +199,11 @@ public class StatisticsServiceImpl implements StatisticsService {
+ 				masteredCards, (int) difficultCards);
+ 	}
+ 
+-	private Map<Long, CardAnswerAggregate> aggregateFor(Long userId, List<Long> cardIds) {
++	private Map<Long, CardAnswerAggregate> aggregateFor(Long userId, List<Long> cardIds, OffsetDateTime start, OffsetDateTime end) {
+ 		if (cardIds.isEmpty()) {
+ 			return Map.of();
+ 		}
+-		return gameAnswerRepository.aggregateForCards(userId, cardIds).stream()
++		return gameAnswerRepository.aggregateForCards(userId, cardIds, start, end).stream()
+ 				.collect(Collectors.toMap(CardAnswerAggregate::cardId, Function.identity()));
+ 	}
+ 
+@@ -178,7 +217,8 @@ public class StatisticsServiceImpl implements StatisticsService {
+ 				card.getId(), card.getDictionary().getId(), card.getSourceText(),
+ 				(int) timesShown, (int) timesCorrect, (int) timesIncorrect, successRate,
+ 				aggregate == null ? null : aggregate.lastShownAt(),
+-				aggregate == null ? null : aggregate.lastCorrectAt());
++				aggregate == null ? null : aggregate.lastCorrectAt(),
++				aggregate == null ? null : aggregate.averageResponseTimeMs());
+ 	}
+ 
+ 	private LearningHistoryResponse toLearningHistoryResponse(Game game) {
+@@ -192,6 +232,10 @@ public class StatisticsServiceImpl implements StatisticsService {
+ 				game.getStatus(), game.getStartedAt(), game.getFinishedAt(), accuracy);
+ 	}
+ 
++	private int orZero(Integer value) {
++		return value == null ? 0 : value;
++	}
++
+ 	private OffsetDateTime[] resolveRange(LocalDate from, LocalDate to) {
+ 		ZoneOffset offset = OffsetDateTime.now().getOffset();
+ 		LocalDate start = from != null ? from : EARLIEST_HISTORY_DATE;
+diff --git a/backend/src/main/resources/application.yaml b/backend/src/main/resources/application.yaml
+index 6ec7039..e819750 100644
+--- a/backend/src/main/resources/application.yaml
++++ b/backend/src/main/resources/application.yaml
+@@ -24,6 +24,11 @@ cors:
+   # staging/production once those frontend URLs are known.
+   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+ 
++app:
++  game:
++    # How long an IN_PROGRESS game may sit idle before GameLifecycleReaper marks it ABANDONED.
++    idle-timeout: ${GAME_IDLE_TIMEOUT:PT30M}
++
+ springdoc:
+   api-docs:
+     path: /v3/api-docs
+diff --git a/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceOwnershipTest.java b/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceOwnershipTest.java
+index 1257416..1688898 100644
+--- a/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceOwnershipTest.java
++++ b/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceOwnershipTest.java
+@@ -9,6 +9,8 @@ import com.deutschlingodeck.dictionary.entity.Dictionary;
+ import com.deutschlingodeck.dictionary.repository.CardRepository;
+ import com.deutschlingodeck.dictionary.repository.DictionaryRepository;
+ import com.deutschlingodeck.game.dto.GameStatus;
++import com.deutschlingodeck.game.engine.DeckBuilder;
++import com.deutschlingodeck.game.engine.RequeuePolicy;
+ import com.deutschlingodeck.game.entity.Game;
+ import com.deutschlingodeck.game.mapper.GameMapper;
+ import com.deutschlingodeck.game.progress.CardProgressRepository;
+@@ -51,6 +53,10 @@ class GameServiceOwnershipTest {
+ 	@Mock
+ 	private SpacedRepetitionScheduler scheduler;
+ 	@Mock
++	private DeckBuilder deckBuilder;
++	@Mock
++	private RequeuePolicy requeuePolicy;
++	@Mock
+ 	private GamificationService gamificationService;
+ 	@Mock
+ 	private CurrentUserProvider currentUserProvider;
+@@ -61,8 +67,8 @@ class GameServiceOwnershipTest {
+ 	void setUp() {
+ 		service = new GameServiceImpl(
+ 				gameRepository, gameAnswerRepository, dictionaryRepository, cardRepository, cardProgressRepository,
+-				userRepository, gameMapper, answerValidator, scheduler, gamificationService, currentUserProvider,
+-				new OwnershipGuard());
++				userRepository, gameMapper, answerValidator, scheduler, deckBuilder, requeuePolicy,
++				gamificationService, currentUserProvider, new OwnershipGuard());
+ 	}
+ 
+ 	@Test
+diff --git a/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceSubmitAnswerTest.java b/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceSubmitAnswerTest.java
+index 14f63fa..216c177 100644
+--- a/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceSubmitAnswerTest.java
++++ b/backend/src/test/java/com/deutschlingodeck/game/service/GameServiceSubmitAnswerTest.java
+@@ -14,6 +14,8 @@ import com.deutschlingodeck.game.dto.CardRevealResponse;
+ import com.deutschlingodeck.game.dto.GameStatus;
+ import com.deutschlingodeck.game.dto.SubmitAnswerRequest;
+ import com.deutschlingodeck.game.dto.ValidationResult;
++import com.deutschlingodeck.game.engine.DeckBuilder;
++import com.deutschlingodeck.game.engine.RequeuePolicy;
+ import com.deutschlingodeck.game.entity.Game;
+ import com.deutschlingodeck.game.mapper.GameMapper;
+ import com.deutschlingodeck.game.progress.CardProgressRepository;
+@@ -58,6 +60,10 @@ class GameServiceSubmitAnswerTest {
+ 	@Mock
+ 	private SpacedRepetitionScheduler scheduler;
+ 	@Mock
++	private DeckBuilder deckBuilder;
++	@Mock
++	private RequeuePolicy requeuePolicy;
++	@Mock
+ 	private GamificationService gamificationService;
+ 	@Mock
+ 	private CurrentUserProvider currentUserProvider;
+@@ -68,8 +74,8 @@ class GameServiceSubmitAnswerTest {
+ 	void setUp() {
+ 		service = new GameServiceImpl(
+ 				gameRepository, gameAnswerRepository, dictionaryRepository, cardRepository, cardProgressRepository,
+-				userRepository, gameMapper, answerValidator, scheduler, gamificationService, currentUserProvider,
+-				new OwnershipGuard());
++				userRepository, gameMapper, answerValidator, scheduler, deckBuilder, requeuePolicy,
++				gamificationService, currentUserProvider, new OwnershipGuard());
+ 	}
+ 
+ 	@Test
+diff --git a/docs/prompt.md b/docs/prompt.md
+index ebfc9d1..4b19b93 100644
+--- a/docs/prompt.md
++++ b/docs/prompt.md
+@@ -1,31 +1,250 @@
+-# Task: Write Tutorial Based on Git Diffs
++# DeutschLingoDeck – Gameplay, Statistics and Game Engine Improvements
+ 
+-Please analyze the following git diff files:
++Perform a comprehensive analysis of the entire application (Angular frontend, Spring Boot backend, PostgreSQL database) and implement the following improvements. Before making any changes, identify the root cause of each issue and ensure the final solution is consistent with the existing architecture, OpenAPI specification, and database model.
+ 
+-- `git-diff-Dictionary-change.txt`
+-- `git-diff-UI-enchancements.txt`
+-- `git-diff-UI.txt`
++## 1. Games remain permanently "In Progress"
+ 
+-Based on these changes, create a comprehensive tutorial that explains **what was changed, how it was implemented, and why those changes were made**.
++### Problem
++Games that are interrupted (browser refresh, tab close, navigation away, unexpected backend error, etc.) remain forever in the `IN_PROGRESS` state.
+ 
+-## Output location
++### Requirements
++- Analyze why games never transition to a final state.
++- Implement a robust lifecycle for games.
++- Ensure games are completed correctly when:
++  - the user finishes normally,
++  - the user abandons the game,
++  - the browser is refreshed,
++  - the browser tab is closed,
++  - the user starts another game while one is already running.
++- Prevent multiple active games for the same user.
++- Consider introducing an `ABANDONED` status if appropriate.
++- Statistics must ignore unfinished or abandoned games where necessary.
+ 
+-Write the tutorial to:
++---
+ 
+-```text
+-./tutorials/frontend-improvements-from-git-diffs.md# Task: Write Tutorial Based on Git Diffs
++## 2. Every new game always starts with the same first 20 words
+ 
+-Please analyze the following git diff files:
++### Problem
+ 
+-- `git-diff-Dictionary-change.txt`
+-- `git-diff-UI-enchancements.txt`
+-- `git-diff-UI.txt`
++The game always loads the first 20 dictionary entries instead of selecting cards randomly.
+ 
+-Based on these changes, create a comprehensive tutorial that explains **what was changed, how it was implemented, and why those changes were made**.
++### Requirements
+ 
+-## Output location
++- Investigate the card selection algorithm.
++- Randomize card selection.
++- Every game should produce a different order.
++- Avoid obvious repetition between consecutive games.
++- Keep behaviour deterministic only when explicitly needed for testing.
+ 
+-Write the tutorial to:
++---
+ 
+-```text
+-./tutorials/frontend-improvements.md
+\ No newline at end of file
++## 3. Repeat incorrectly answered cards
++
++Currently every card is asked only once.
++
++Implement a proper spaced repetition mechanism.
++
++Requirements:
++
++- Wrong answers should appear again later during the same game.
++- Multiple wrong answers should increase repetition priority.
++- Correctly answered cards should gradually disappear from the queue.
++- Avoid asking the same card immediately again.
++- The algorithm should feel similar to flashcard systems rather than simple looping.
++
++Document the chosen algorithm.
++
++---
++
++## 4. Card statistics do not calculate success rate
++
++Currently card statistics appear incorrect.
++
++Investigate:
++
++- total attempts
++- correct answers
++- incorrect answers
++- success rate
++- last played
++- average response
++
++Verify that every answer updates statistics correctly.
++
++Success rate should always be recalculated from persisted data rather than cached incorrectly.
++
++---
++
++## 5. Game History duration formatting
++
++Currently durations are displayed as raw seconds.
++
++Convert durations into a human-readable format.
++
++Examples:
++
++- 35 sec
++- 2 min 14 sec
++- 12 min
++- 1 h 8 min
++
++Implement formatting consistently throughout the application.
++
++---
++
++## 6. Statistics filters do not work
++
++The date filters and filtering controls inside the Statistics module currently have no effect.
++
++Investigate the complete flow:
++
++Angular component
++
++↓
++
++HTTP request
++
++↓
++
++Backend controller
++
++↓
++
++Service
++
++↓
++
++Repository
++
++↓
++
++Database query
++
++Fix the entire pipeline.
++
++Filtering should correctly support:
++
++- date from
++- date to
++- selected dictionary
++- selected game mode
++- any existing filters in the UI
++
++---
++
++## 7. Mastery Breakdown is unclear
++
++The current "Mastery Breakdown" chart is difficult to understand.
++
++Requirements:
++
++- Analyse how it is currently calculated.
++- Verify whether the implementation is mathematically correct.
++- If the calculation is poor, redesign it.
++- Rename labels if necessary.
++- Add meaningful tooltips.
++- Clearly explain what every category means.
++
++Example categories could be:
++
++- New
++- Learning
++- Familiar
++- Strong
++- Mastered
++
++The calculation should be based on real user performance rather than arbitrary thresholds.
++
++---
++
++## 8. Improve the game engine
++
++Redesign the game engine so that it behaves like a real vocabulary trainer instead of simply iterating through cards.
++
++The engine should consider:
++
++- random card order
++- historical success rate
++- number of previous mistakes
++- cards never answered before
++- recently answered cards
++- learning priority
++
++Cards with low success rates should appear significantly more often than mastered cards.
++
++The algorithm should balance:
++
++- randomness
++- fairness
++- repetition
++- learning efficiency
++
++Avoid situations where users repeatedly receive the same few cards.
++
++Document the algorithm in comments.
++
++---
++
++# Additional requirements
++
++## Backend
++
++Review:
++
++- entities
++- services
++- repositories
++- statistics calculations
++- transactions
++- scheduled tasks if needed
++
++Refactor where appropriate.
++
++---
++
++## Frontend
++
++Review:
++
++- statistics pages
++- game components
++- history page
++- charts
++- formatting utilities
++
++Improve UX where necessary.
++
++---
++
++## Database
++
++Verify that all statistics are persisted correctly.
++
++If additional columns or tables are needed, create proper Flyway migrations.
++
++Never modify existing migrations.
++
++---
++
++## Code quality
++
++- Remove duplicated logic.
++- Improve naming.
++- Add comments where algorithms become non-trivial.
++- Follow existing project architecture.
++- Keep the code production-ready.
++- Do not introduce mock data or temporary workarounds.
++
++---
++
++## Deliverables
++
++After implementation provide:
++
++1. Root cause for every issue.
++2. Description of every implemented solution.
++3. Explanation of the new game engine.
++4. Explanation of the mastery calculation.
++5. Any database changes.
++6. Any API changes.
++7. Suggestions for future improvements.
+\ No newline at end of file
+diff --git a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.spec.ts b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.spec.ts
+index abcee5e..ef8cc65 100644
+--- a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.spec.ts
++++ b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.spec.ts
+@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
+ import { provideRouter } from '@angular/router';
+ import { of } from 'rxjs';
+ 
++import { API_BASE_URL } from '../../../../core/config/api-base-url.token';
+ import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
+ import { AnswerValidationResponse, CurrentCard, Game } from '../../models/game.model';
+ import { GameApiService } from '../../services/game-api.service';
+@@ -49,6 +50,7 @@ describe('ActiveGamePageComponent - Enter key drives Continue', () => {
+         provideRouter([]),
+         { provide: GameApiService, useValue: gameApi },
+         { provide: ConfirmDialogService, useValue: { confirm: vi.fn().mockReturnValue(of(true)) } },
++        { provide: API_BASE_URL, useValue: 'http://localhost/api/v1' },
+       ],
+     }).compileComponents();
+   });
+diff --git a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts
+index 632224b..1c3996e 100644
+--- a/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts
++++ b/frontend/src/app/features/games/pages/active-game-page/active-game-page.component.ts
+@@ -1,8 +1,11 @@
++import { isPlatformBrowser } from '@angular/common';
+ import {
+   ChangeDetectionStrategy,
+   Component,
+   ElementRef,
++  OnDestroy,
+   OnInit,
++  PLATFORM_ID,
+   afterRenderEffect,
+   computed,
+   inject,
+@@ -22,6 +25,8 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
+ import { Router } from '@angular/router';
+ import { map, timer } from 'rxjs';
+ 
++import { TokenStorageService } from '../../../../core/auth/token-storage.service';
++import { API_BASE_URL } from '../../../../core/config/api-base-url.token';
+ import { BreadcrumbsComponent } from '../../../../shared/components/breadcrumbs/breadcrumbs.component';
+ import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
+ import { ConfirmDialogService } from '../../../../shared/dialogs/confirm-dialog/confirm-dialog.service';
+@@ -48,12 +53,15 @@ import { ActiveGameStateService } from '../../state/active-game-state.service';
+   templateUrl: './active-game-page.component.html',
+   styleUrl: './active-game-page.component.css',
+ })
+-export class ActiveGamePageComponent implements OnInit {
++export class ActiveGamePageComponent implements OnInit, OnDestroy {
+   protected readonly state = inject(ActiveGameStateService);
+   private readonly gameApi = inject(GameApiService);
+   private readonly confirmDialog = inject(ConfirmDialogService);
+   private readonly formBuilder = inject(FormBuilder);
+   private readonly router = inject(Router);
++  private readonly tokenStorage = inject(TokenStorageService);
++  private readonly baseUrl = inject(API_BASE_URL);
++  private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+ 
+   readonly gameId = input.required<string>();
+   private readonly gameIdAsNumber = computed(() => Number(this.gameId()));
+@@ -97,8 +105,43 @@ export class ActiveGamePageComponent implements OnInit {
+ 
+   ngOnInit(): void {
+     this.state.load(this.gameIdAsNumber());
++    if (this.isBrowser) {
++      window.addEventListener('pagehide', this.handlePageHide);
++    }
+   }
+ 
++  ngOnDestroy(): void {
++    if (this.isBrowser) {
++      window.removeEventListener('pagehide', this.handlePageHide);
++    }
++  }
++
++  /**
++   * Best-effort abandon on browser refresh/close/navigate-away. `pagehide` (unlike
++   * `visibilitychange`) doesn't fire on same-document Angular route changes or on a tab-switch,
++   * so this only triggers on an actual unload - exactly the case the client can catch that
++   * `GameLifecycleReaper` otherwise has to wait out an idle timeout for. `fetch` with
++   * `keepalive: true` is used instead of `HttpClient` because the request must be able to
++   * survive the page unloading before it completes.
++   */
++  private readonly handlePageHide = (): void => {
++    const game = this.state.game();
++    if (!game || game.status !== 'IN_PROGRESS') {
++      return;
++    }
++    const token = this.tokenStorage.getAccessToken();
++    if (!token) {
++      return;
++    }
++    fetch(`${this.baseUrl}/games/${this.gameIdAsNumber()}/abandon`, {
++      method: 'POST',
++      keepalive: true,
++      headers: { Authorization: `Bearer ${token}` },
++    }).catch(() => {
++      // Best-effort - GameLifecycleReaper is the backstop if this doesn't land.
++    });
++  };
++
+   protected retryLoad(): void {
+     this.state.load(this.gameIdAsNumber());
+   }
+diff --git a/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.html b/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.html
+index 755f52e..0eb96be 100644
+--- a/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.html
++++ b/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.html
+@@ -49,9 +49,7 @@
+ 
+     <ng-container matColumnDef="duration">
+       <th mat-header-cell *matHeaderCellDef>Duration</th>
+-      <td mat-cell *matCellDef="let game">
+-        {{ game.durationSeconds !== undefined ? game.durationSeconds + 's' : '—' }}
+-      </td>
++      <td mat-cell *matCellDef="let game">{{ game.durationSeconds | appDuration }}</td>
+     </ng-container>
+ 
+     <ng-container matColumnDef="actions">
+diff --git a/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.ts b/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.ts
+index 4e905a9..191d775 100644
+--- a/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.ts
++++ b/frontend/src/app/features/games/pages/game-history-page/game-history-page.component.ts
+@@ -12,6 +12,7 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
+ import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
+ import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
+ import { AppError } from '../../../../shared/models/api-error.model';
++import { DurationPipe } from '../../../../shared/pipes/duration.pipe';
+ import { GameStatus } from '../../models/game-status.enum';
+ import { GameSummary } from '../../models/game.model';
+ import { GameApiService } from '../../services/game-api.service';
+@@ -38,6 +39,7 @@ const STATUS_BADGE_VARIANT: Record<GameStatus, BadgeVariant> = {
+     EmptyStateComponent,
+     InlineAlertComponent,
+     BadgeComponent,
++    DurationPipe,
+   ],
+   changeDetection: ChangeDetectionStrategy.OnPush,
+   templateUrl: './game-history-page.component.html',
+diff --git a/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.html b/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.html
+index 0f2be22..c7d18d2 100644
+--- a/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.html
++++ b/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.html
+@@ -23,7 +23,7 @@
+     <app-stat-card label="Correct Answers" [value]="summary.correctAnswers" icon="check_circle" />
+     <app-stat-card label="Incorrect Answers" [value]="summary.incorrectAnswers" icon="cancel" />
+     @if (summary.durationSeconds !== undefined) {
+-      <app-stat-card label="Duration" [value]="summary.durationSeconds + 's'" icon="schedule" />
++      <app-stat-card label="Duration" [value]="summary.durationSeconds | appDuration" icon="schedule" />
+     }
+     @if (summary.averageResponseTimeMs !== undefined) {
+       <app-stat-card
+diff --git a/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.ts b/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.ts
+index 594a795..f76e7f3 100644
+--- a/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.ts
++++ b/frontend/src/app/features/games/pages/game-summary-page/game-summary-page.component.ts
+@@ -8,6 +8,7 @@ import { InlineAlertComponent } from '../../../../shared/components/inline-alert
+ import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
+ import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
+ import { AppError } from '../../../../shared/models/api-error.model';
++import { DurationPipe } from '../../../../shared/pipes/duration.pipe';
+ import { GameSummary } from '../../models/game.model';
+ import { GameApiService } from '../../services/game-api.service';
+ 
+@@ -17,6 +18,7 @@ import { GameApiService } from '../../services/game-api.service';
+     RouterLink,
+     MatButtonModule,
+     MatProgressBarModule,
++    DurationPipe,
+     PageHeaderComponent,
+     BreadcrumbsComponent,
+     InlineAlertComponent,
+diff --git a/frontend/src/app/features/statistics/models/statistics.model.ts b/frontend/src/app/features/statistics/models/statistics.model.ts
+index e238582..2de2b4c 100644
+--- a/frontend/src/app/features/statistics/models/statistics.model.ts
++++ b/frontend/src/app/features/statistics/models/statistics.model.ts
+@@ -20,6 +20,16 @@ export interface CardStatistics {
+   successRate?: number;
+   lastShownAt?: string | null;
+   lastCorrectAt?: string | null;
++  averageResponseTimeMs?: number | null;
++}
++
++export interface MasteryBreakdown {
++  newCount?: number;
++  learningCount?: number;
++  familiarCount?: number;
++  strongCount?: number;
++  masteredCount?: number;
++  totalCards?: number;
+ }
+ 
+ export interface DictionaryStatistics {
+diff --git a/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.css b/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.css
+index fc0bf8a..78155ab 100644
+--- a/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.css
++++ b/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.css
+@@ -1,9 +1,21 @@
+ .statistics__filters {
+   display: flex;
++  flex-wrap: wrap;
+   gap: 1rem;
+   margin-bottom: 1rem;
+ }
+ 
++.statistics__mastery-legend {
++  list-style: none;
++  margin: 0.75rem 0 0;
++  padding: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 0.375rem;
++  font-size: 0.8125rem;
++  color: var(--mat-sys-on-surface-variant);
++}
++
+ .statistics__section {
+   margin-bottom: 2rem;
+ }
+diff --git a/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.html b/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.html
+index 98d902a..7ed392b 100644
+--- a/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.html
++++ b/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.html
+@@ -7,7 +7,7 @@
+       matInput
+       type="date"
+       [ngModel]="fromDate()"
+-      (ngModelChange)="fromDate.set($event); onDateFilterChange()"
++      (ngModelChange)="fromDate.set($event); onFilterChange()"
+     />
+   </mat-form-field>
+   <mat-form-field appearance="outline">
+@@ -16,9 +16,33 @@
+       matInput
+       type="date"
+       [ngModel]="toDate()"
+-      (ngModelChange)="toDate.set($event); onDateFilterChange()"
++      (ngModelChange)="toDate.set($event); onFilterChange()"
+     />
+   </mat-form-field>
++  <mat-form-field appearance="outline">
++    <mat-label>Dictionary</mat-label>
++    <mat-select
++      [ngModel]="dictionaryFilter()"
++      (ngModelChange)="dictionaryFilter.set($event); onFilterChange()"
++    >
++      <mat-option [value]="''">All</mat-option>
++      @for (dictionary of dictionaries(); track dictionary.id) {
++        <mat-option [value]="dictionary.id">{{ dictionary.name }}</mat-option>
++      }
++    </mat-select>
++  </mat-form-field>
++  <mat-form-field appearance="outline">
++    <mat-label>Game mode</mat-label>
++    <mat-select
++      [ngModel]="gameModeFilter()"
++      (ngModelChange)="gameModeFilter.set($event); onFilterChange()"
++    >
++      <mat-option [value]="''">All</mat-option>
++      @for (mode of gameModes; track mode) {
++        <mat-option [value]="mode">{{ mode }}</mat-option>
++      }
++    </mat-select>
++  </mat-form-field>
+ </div>
+ 
+ <section class="statistics__section">
+@@ -42,6 +66,11 @@
+         icon="target"
+       />
+       <app-stat-card label="Total Answers" [value]="overview.totalAnswers ?? 0" icon="quiz" />
++      <app-stat-card
++        label="Total Study Time"
++        [value]="overview.totalStudyTimeSeconds ?? 0 | appDuration"
++        icon="schedule"
++      />
+       <app-stat-card
+         label="Current Streak"
+         [value]="overview.currentLearningStreak ?? 0"
+@@ -95,10 +124,29 @@
+   <mat-card appearance="outlined" class="statistics__chart-card">
+     <mat-card-header>
+       <mat-card-title>Mastery Breakdown</mat-card-title>
+-      <mat-card-subtitle>Mastered vs. difficult cards</mat-card-subtitle>
++      <mat-card-subtitle>How well each card is retained, from never studied to long-term recall</mat-card-subtitle>
+     </mat-card-header>
+     <mat-card-content>
+-      <app-chart-donut [segments]="masterySegments()" ariaLabel="Mastery breakdown" />
++      @if (masteryBreakdownError()) {
++        <app-inline-alert
++          tone="warning"
++          message="Couldn't load the mastery breakdown."
++          [retryable]="true"
++          (retry)="loadMasteryBreakdown()"
++        />
++      } @else if (masteryBreakdown(); as breakdown) {
++        <app-chart-donut [segments]="masterySegments()" ariaLabel="Mastery breakdown">
++        </app-chart-donut>
++        <ul class="statistics__mastery-legend">
++          @for (segment of masterySegments(); track segment.label) {
++            <li [matTooltip]="tierExplanation(segment.label)">
++              {{ segment.label }}: {{ tierExplanation(segment.label) }}
++            </li>
++          }
++        </ul>
++      } @else {
++        <app-empty-state icon="donut_large" title="No cards yet" />
++      }
+     </mat-card-content>
+   </mat-card>
+ </section>
+@@ -201,6 +249,12 @@
+           {{ stat.lastShownAt ? (stat.lastShownAt | date: 'short') : '—' }}
+         </td>
+       </ng-container>
++      <ng-container matColumnDef="averageResponseTimeMs">
++        <th mat-header-cell *matHeaderCellDef mat-sort-header>Avg. Response</th>
++        <td mat-cell *matCellDef="let stat">
++          {{ stat.averageResponseTimeMs ? (stat.averageResponseTimeMs / 1000).toFixed(1) + 's' : '—' }}
++        </td>
++      </ng-container>
+       <tr mat-header-row *matHeaderRowDef="cardColumns"></tr>
+       <tr mat-row *matRowDef="let row; columns: cardColumns"></tr>
+     </table>
+diff --git a/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.ts b/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.ts
+index df48422..beffc3d 100644
+--- a/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.ts
++++ b/frontend/src/app/features/statistics/pages/statistics-dashboard-page/statistics-dashboard-page.component.ts
+@@ -5,9 +5,13 @@ import { MatCardModule } from '@angular/material/card';
+ import { MatFormFieldModule } from '@angular/material/form-field';
+ import { MatInputModule } from '@angular/material/input';
+ import { MatProgressBarModule } from '@angular/material/progress-bar';
++import { MatSelectModule } from '@angular/material/select';
+ import { MatSortModule, Sort } from '@angular/material/sort';
+ import { MatTableModule } from '@angular/material/table';
++import { MatTooltipModule } from '@angular/material/tooltip';
+ 
++import { DictionaryApiService } from '../../../dictionaries/services/dictionary-api.service';
++import { DictionarySummary } from '../../../dictionaries/models/dictionary.model';
+ import { ChartBarComponent } from '../../../../shared/components/chart-bar/chart-bar.component';
+ import { ChartDonutComponent, DonutChartSegment } from '../../../../shared/components/chart-donut/chart-donut.component';
+ import { ChartLineComponent, LineChartPoint } from '../../../../shared/components/chart-line/chart-line.component';
+@@ -15,6 +19,7 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
+ import { InlineAlertComponent } from '../../../../shared/components/inline-alert/inline-alert.component';
+ import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
+ import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
++import { DurationPipe } from '../../../../shared/pipes/duration.pipe';
+ import { WeeklyActivityPoint } from '../../../gamification/models/gamification.model';
+ import { GamificationService } from '../../../gamification/services/gamification.service';
+ import {
+@@ -22,11 +27,21 @@ import {
+   DashboardStatistics,
+   DictionaryStatistics,
+   LearningHistoryEntry,
++  MasteryBreakdown,
+ } from '../../models/statistics.model';
+ import { StatisticsApiService } from '../../services/statistics-api.service';
+ 
+ const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+ 
++/** Explains each Mastery Breakdown tier in plain language, shown as a legend tooltip. */
++const MASTERY_TIER_EXPLANATIONS: Record<string, string> = {
++  New: 'Not studied yet',
++  Learning: 'Just learned, or recently missed - reviewed again within a day',
++  Familiar: 'Holding for a few days between reviews',
++  Strong: 'Retained for 1-3 weeks between reviews',
++  Mastered: 'Retained for 3+ weeks between reviews',
++};
++
+ /** UTC-based (not locale-based) so the label is identical between SSR and client hydration. */
+ function formatShortDate(iso: string): string {
+   const date = new Date(iso);
+@@ -63,13 +78,16 @@ function sortRows<T>(rows: T[], sort: Sort): T[] {
+   selector: 'app-statistics-dashboard-page',
+   imports: [
+     DatePipe,
++    DurationPipe,
+     FormsModule,
+     MatCardModule,
+     MatFormFieldModule,
+     MatInputModule,
+     MatProgressBarModule,
++    MatSelectModule,
+     MatSortModule,
+     MatTableModule,
++    MatTooltipModule,
+     PageHeaderComponent,
+     EmptyStateComponent,
+     InlineAlertComponent,
+@@ -85,12 +103,18 @@ function sortRows<T>(rows: T[], sort: Sort): T[] {
+ export class StatisticsDashboardPageComponent {
+   private readonly statisticsApi = inject(StatisticsApiService);
+   private readonly gamificationApi = inject(GamificationService);
++  private readonly dictionaryApi = inject(DictionaryApiService);
+ 
+   protected readonly weeklyActivity = signal<WeeklyActivityPoint[]>([]);
+   protected readonly weeklyActivityError = signal(false);
+ 
+   protected readonly fromDate = signal<string>('');
+   protected readonly toDate = signal<string>('');
++  protected readonly dictionaryFilter = signal<number | ''>('');
++  protected readonly gameModeFilter = signal<string>('');
++
++  protected readonly dictionaries = signal<DictionarySummary[]>([]);
++  protected readonly gameModes: string[] = ['STANDARD'];
+ 
+   protected readonly overview = signal<DashboardStatistics | null>(null);
+   protected readonly overviewLoading = signal(false);
+@@ -108,6 +132,9 @@ export class StatisticsDashboardPageComponent {
+   protected readonly learningHistoryLoading = signal(false);
+   protected readonly learningHistoryError = signal(false);
+ 
++  protected readonly masteryBreakdown = signal<MasteryBreakdown | null>(null);
++  protected readonly masteryBreakdownError = signal(false);
++
+   protected readonly dictionaryColumns = [
+     'dictionaryName',
+     'completedGames',
+@@ -115,7 +142,7 @@ export class StatisticsDashboardPageComponent {
+     'masteredCards',
+     'difficultCards',
+   ];
+-  protected readonly cardColumns = ['sourceText', 'timesShown', 'successRate', 'lastShownAt'];
++  protected readonly cardColumns = ['sourceText', 'timesShown', 'successRate', 'lastShownAt', 'averageResponseTimeMs'];
+   protected readonly historyColumns = ['dictionaryName', 'status', 'accuracy', 'startedAt'];
+ 
+   protected readonly dictionarySort = signal<Sort>({ active: '', direction: '' });
+@@ -147,24 +174,30 @@ export class StatisticsDashboardPageComponent {
+   );
+ 
+   protected readonly masterySegments = computed<DonutChartSegment[]>(() => {
+-    const stats = this.dictionaryStatistics();
++    const breakdown = this.masteryBreakdown();
++    if (!breakdown) {
++      return [];
++    }
+     return [
+-      {
+-        label: 'Mastered',
+-        value: stats.reduce((sum, s) => sum + (s.masteredCards ?? 0), 0),
+-        color: 'success',
+-      },
+-      {
+-        label: 'Difficult',
+-        value: stats.reduce((sum, s) => sum + (s.difficultCards ?? 0), 0),
+-        color: 'danger',
+-      },
++      { label: 'New', value: breakdown.newCount ?? 0, color: 'neutral' },
++      { label: 'Learning', value: breakdown.learningCount ?? 0, color: 'danger' },
++      { label: 'Familiar', value: breakdown.familiarCount ?? 0, color: 'warning' },
++      { label: 'Strong', value: breakdown.strongCount ?? 0, color: 'primary' },
++      { label: 'Mastered', value: breakdown.masteredCount ?? 0, color: 'success' },
+     ];
+   });
+ 
+   constructor() {
+     this.loadAll();
+     this.loadWeeklyActivity();
++    this.dictionaryApi.list(0, 100).subscribe({
++      next: (response) => this.dictionaries.set(response.content),
++      error: () => {},
++    });
++  }
++
++  protected tierExplanation(label: string): string {
++    return MASTERY_TIER_EXPLANATIONS[label] ?? '';
+   }
+ 
+   protected loadWeeklyActivity(): void {
+@@ -192,28 +225,39 @@ export class StatisticsDashboardPageComponent {
+     this.loadDictionaryStatistics();
+     this.loadCardStatistics();
+     this.loadLearningHistory();
++    this.loadMasteryBreakdown();
+   }
+ 
+-  protected onDateFilterChange(): void {
++  /** Re-triggered by every filter control (date range, dictionary, game mode). */
++  protected onFilterChange(): void {
+     this.loadOverview();
++    this.loadCardStatistics();
+     this.loadLearningHistory();
++    this.loadMasteryBreakdown();
++  }
++
++  private currentFilter(): { from?: string; to?: string; dictionaryId?: number; gameMode?: string } {
++    return {
++      from: this.fromDate() || undefined,
++      to: this.toDate() || undefined,
++      dictionaryId: this.dictionaryFilter() || undefined,
++      gameMode: this.gameModeFilter() || undefined,
++    };
+   }
+ 
+   protected loadOverview(): void {
+     this.overviewLoading.set(true);
+     this.overviewError.set(false);
+-    this.statisticsApi
+-      .getDashboardStatistics({ from: this.fromDate() || undefined, to: this.toDate() || undefined })
+-      .subscribe({
+-        next: (overview) => {
+-          this.overview.set(overview);
+-          this.overviewLoading.set(false);
+-        },
+-        error: () => {
+-          this.overviewError.set(true);
+-          this.overviewLoading.set(false);
+-        },
+-      });
++    this.statisticsApi.getDashboardStatistics(this.currentFilter()).subscribe({
++      next: (overview) => {
++        this.overview.set(overview);
++        this.overviewLoading.set(false);
++      },
++      error: () => {
++        this.overviewError.set(true);
++        this.overviewLoading.set(false);
++      },
++    });
+   }
+ 
+   protected loadDictionaryStatistics(): void {
+@@ -234,7 +278,7 @@ export class StatisticsDashboardPageComponent {
+   protected loadCardStatistics(): void {
+     this.cardStatisticsLoading.set(true);
+     this.cardStatisticsError.set(false);
+-    this.statisticsApi.getCardStatistics().subscribe({
++    this.statisticsApi.getCardStatistics(this.currentFilter()).subscribe({
+       next: (response) => {
+         this.cardStatistics.set(response.content);
+         this.cardStatisticsLoading.set(false);
+@@ -249,17 +293,23 @@ export class StatisticsDashboardPageComponent {
+   protected loadLearningHistory(): void {
+     this.learningHistoryLoading.set(true);
+     this.learningHistoryError.set(false);
+-    this.statisticsApi
+-      .getLearningHistory({ from: this.fromDate() || undefined, to: this.toDate() || undefined })
+-      .subscribe({
+-        next: (response) => {
+-          this.learningHistory.set(response.content);
+-          this.learningHistoryLoading.set(false);
+-        },
+-        error: () => {
+-          this.learningHistoryError.set(true);
+-          this.learningHistoryLoading.set(false);
+-        },
+-      });
++    this.statisticsApi.getLearningHistory(this.currentFilter()).subscribe({
++      next: (response) => {
++        this.learningHistory.set(response.content);
++        this.learningHistoryLoading.set(false);
++      },
++      error: () => {
++        this.learningHistoryError.set(true);
++        this.learningHistoryLoading.set(false);
++      },
++    });
++  }
++
++  protected loadMasteryBreakdown(): void {
++    this.masteryBreakdownError.set(false);
++    this.statisticsApi.getMasteryBreakdown(this.dictionaryFilter() || undefined).subscribe({
++      next: (breakdown) => this.masteryBreakdown.set(breakdown),
++      error: () => this.masteryBreakdownError.set(true),
++    });
+   }
+ }
+diff --git a/frontend/src/app/features/statistics/services/statistics-api.service.ts b/frontend/src/app/features/statistics/services/statistics-api.service.ts
+index 483d662..8ed2923 100644
+--- a/frontend/src/app/features/statistics/services/statistics-api.service.ts
++++ b/frontend/src/app/features/statistics/services/statistics-api.service.ts
+@@ -9,11 +9,14 @@ import {
+   DashboardStatistics,
+   DictionaryStatistics,
+   LearningHistoryEntry,
++  MasteryBreakdown,
+ } from '../models/statistics.model';
+ 
+-export interface DateRangeFilter {
++export interface StatisticsFilter {
+   from?: string;
+   to?: string;
++  dictionaryId?: number;
++  gameMode?: string;
+ }
+ 
+ /** All backend communication for the Statistics feature. */
+@@ -22,21 +25,18 @@ export class StatisticsApiService {
+   private readonly http = inject(HttpClient);
+   private readonly baseUrl = inject(API_BASE_URL);
+ 
+-  getDashboardStatistics(filter: DateRangeFilter = {}): Observable<DashboardStatistics> {
++  getDashboardStatistics(filter: StatisticsFilter = {}): Observable<DashboardStatistics> {
+     return this.http.get<DashboardStatistics>(`${this.baseUrl}/statistics`, {
+       params: this.toHttpParams(filter),
+     });
+   }
+ 
+   getCardStatistics(
+-    dictionaryId?: number,
++    filter: StatisticsFilter = {},
+     page = 0,
+     size = 20,
+   ): Observable<PageResponse<CardStatistics>> {
+-    let params = new HttpParams().set('page', page).set('size', size);
+-    if (dictionaryId) {
+-      params = params.set('dictionaryId', dictionaryId);
+-    }
++    const params = this.toHttpParams(filter).set('page', page).set('size', size);
+     return this.http.get<PageResponse<CardStatistics>>(`${this.baseUrl}/statistics/cards`, {
+       params,
+     });
+@@ -46,10 +46,18 @@ export class StatisticsApiService {
+     return this.http.get<DictionaryStatistics[]>(`${this.baseUrl}/statistics/dictionaries`);
+   }
+ 
++  getMasteryBreakdown(dictionaryId?: number): Observable<MasteryBreakdown> {
++    let params = new HttpParams();
++    if (dictionaryId) {
++      params = params.set('dictionaryId', dictionaryId);
++    }
++    return this.http.get<MasteryBreakdown>(`${this.baseUrl}/statistics/mastery`, { params });
++  }
++
+   getLearningHistory(
+-    filter: DateRangeFilter & { page?: number; size?: number } = {},
++    filter: StatisticsFilter & { page?: number; size?: number } = {},
+   ): Observable<PageResponse<LearningHistoryEntry>> {
+-    let params = this.toHttpParams(filter)
++    const params = this.toHttpParams(filter)
+       .set('page', filter.page ?? 0)
+       .set('size', filter.size ?? 20);
+     return this.http.get<PageResponse<LearningHistoryEntry>>(`${this.baseUrl}/statistics/history`, {
+@@ -57,7 +65,7 @@ export class StatisticsApiService {
+     });
+   }
+ 
+-  private toHttpParams(filter: DateRangeFilter): HttpParams {
++  private toHttpParams(filter: StatisticsFilter): HttpParams {
+     let params = new HttpParams();
+     if (filter.from) {
+       params = params.set('from', filter.from);
+@@ -65,6 +73,12 @@ export class StatisticsApiService {
+     if (filter.to) {
+       params = params.set('to', filter.to);
+     }
++    if (filter.dictionaryId) {
++      params = params.set('dictionaryId', filter.dictionaryId);
++    }
++    if (filter.gameMode) {
++      params = params.set('gameMode', filter.gameMode);
++    }
+     return params;
+   }
+ }
